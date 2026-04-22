@@ -1,19 +1,10 @@
 'use client'
-import { useContext } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { UserContext } from '@/lib/context' 
+import { createClient } from '@/lib/supabase' 
 import { 
-  BookOpen, 
-  Trophy, 
-  Zap, 
-  Target,
-  Loader2,
-  ArrowUpRight,
-  Users,
-  Award,
-  Clock,
-  UserPlus,
-  BarChart,
-  CheckCircle2
+  BookOpen, Trophy, Zap, Target, Loader2, ArrowUpRight, Users, 
+  Award, Clock, UserPlus, BarChart, CheckCircle2, X, Check, Copy
 } from 'lucide-react'
 
 // ============================================================================
@@ -66,29 +57,165 @@ function VistaEstudiante({ profile }: { profile: any }) {
 }
 
 // ============================================================================
-// 2. VISTA: DASHBOARD DEL ADMINISTRADOR (Con Diseño de "Usuarios")
+// 2. VISTA: DASHBOARD DEL ADMINISTRADOR
 // ============================================================================
 function VistaAdmin({ profile }: { profile: any }) {
   const nombreAdmin = profile?.full_name || 'GERENTE'
-  
+  const supabase = createClient() 
+
+  // ESTADOS DE LA BASE DE DATOS
+  const [totalUsers, setTotalUsers] = useState<number>(0)
+  const [recentUsers, setRecentUsers] = useState<any[]>([])
+  const [loadingData, setLoadingData] = useState(true)
+
+  // ESTADOS PARA EL MODAL HÍBRIDO (El mejor de los dos mundos)
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteForm, setInviteForm] = useState({ full_name: '', email: '', role: 'estudiante' })
+  const [isInviting, setIsInviting] = useState(false)
+  const [generatedPassword, setGeneratedPassword] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  // LECTURA INICIAL DE DATOS
+  useEffect(() => {
+    async function fetchDashboardData() {
+      setLoadingData(true)
+      try {
+        const { count } = await supabase.from('profiles').select('*', { count: 'exact', head: true })
+        if (count !== null) setTotalUsers(count)
+
+        const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(3)
+        if (usersData) setRecentUsers(usersData)
+      } catch (error) {
+        console.error("Error fetching data", error)
+      } finally {
+        setLoadingData(false)
+      }
+    }
+    fetchDashboardData()
+  }, [supabase])
+
+  // FUNCIÓN PARA ENVIAR Y GENERAR LA CONTRASEÑA AUTOMÁTICA
+  const handleInviteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsInviting(true)
+    
+    // Generamos la contraseña segura tipo "BTF-XXXXXXX"
+    const newPass = "BTF-" + Math.random().toString(36).substring(2, 9).toUpperCase()
+
+    try {
+      const response = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteForm.email.toLowerCase().trim(),
+          password: newPass,
+          full_name: inviteForm.full_name,
+          role: inviteForm.role
+        })
+      })
+      
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Error al crear usuario')
+      
+      // Si fue exitoso, mostramos la contraseña generada en la UI
+      setGeneratedPassword(newPass)
+      
+    } catch (err: any) {
+      alert("Error de Sistema: " + err.message)
+    } finally {
+      setIsInviting(false)
+    }
+  }
+
+  // CERRAR MODAL Y RECARGAR TABLA
+  const handleCloseModal = () => {
+    setShowInviteModal(false)
+    setGeneratedPassword('')
+    setInviteForm({ full_name: '', email: '', role: 'estudiante' })
+    window.location.reload()
+  }
+
   const adminStats = [
-    { label: 'COLABORADORES ACTIVOS', value: '42', icon: Users, color: 'text-purple-500', trend: 'De 50 licencias' },
+    { label: 'COLABORADORES ACTIVOS', value: totalUsers.toString(), icon: Users, color: 'text-purple-500', trend: 'Usuarios en DB' },
     { label: 'TASA DE FINALIZACIÓN', value: '78%', icon: Target, color: 'text-blue-500', trend: '+5% este mes' },
     { label: 'HORAS DE CAPACITACIÓN', value: '340h', icon: Clock, color: 'text-[#00E5FF]', trend: 'Acumulado mensual' },
     { label: 'CERTIFICADOS EMITIDOS', value: '115', icon: Award, color: 'text-emerald-500', trend: 'Acreditaciones' },
   ]
 
-  // Datos de ejemplo para la tabla de Progreso
-  const recentProgress = [
-    { user: 'María Gómez', email: 'maria@empresa.com', action: 'Completó: Ética de Datos', time: 'Hace 10 min', icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-    { user: 'Carlos Ruiz', email: 'carlos@empresa.com', action: 'Inició: Onboarding B2B', time: 'Hace 1 hora', icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
-    { user: 'Ana Torres', email: 'ana@empresa.com', action: 'Certificado: Ventas', time: 'Hace 3 horas', icon: Award, color: 'text-[#00E5FF]', bg: 'bg-[#00E5FF]/10' },
-  ]
-
   return (
     <div className="w-full max-w-7xl mx-auto space-y-10 animate-in fade-in duration-500">
       
-      {/* HEADER GERENCIAL (Alineado con el estilo de la vista Usuarios) */}
+      {/* MODAL HÍBRIDO EMERGENTE */}
+      {showInviteModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-[#050505] border border-white/10 p-10 rounded-[3rem] w-full max-w-md shadow-2xl relative text-center">
+            
+            <button onClick={handleCloseModal} className="absolute top-8 right-8 text-zinc-600 hover:text-white transition-colors">
+              <X size={24} />
+            </button>
+            
+            {/* PANTALLA 1: FORMULARIO */}
+            {!generatedPassword ? (
+              <form onSubmit={handleInviteSubmit} className="space-y-6">
+                <div className="bg-purple-500/10 w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto border border-purple-500/20 mb-6">
+                  <UserPlus className="text-purple-500" size={32} />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase mb-2">
+                    VINCULAR <span className="text-purple-500">ACCESO</span>
+                  </h3>
+                  <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest">Generación automática de clave</p>
+                </div>
+                
+                <div className="space-y-4 text-left">
+                  <input required type="text" value={inviteForm.full_name} onChange={e => setInviteForm({...inviteForm, full_name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm focus:outline-none focus:border-purple-500 transition-colors text-center font-bold tracking-wider" placeholder="Nombre Completo" />
+                  
+                  <input required type="email" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm focus:outline-none focus:border-purple-500 transition-colors text-center font-bold tracking-wider" placeholder="correo@empresa.com" />
+                  
+                  <select value={inviteForm.role} onChange={e => setInviteForm({...inviteForm, role: e.target.value})} className="w-full bg-[#050505] border border-white/10 rounded-2xl px-5 py-4 text-white text-sm focus:outline-none focus:border-purple-500 transition-colors appearance-none text-center font-bold tracking-wider cursor-pointer">
+                    <option value="estudiante">Nivel: Estudiante</option>
+                    <option value="admin">Nivel: Administrador</option>
+                  </select>
+                </div>
+                
+                <button type="submit" disabled={isInviting} className="w-full mt-2 bg-white text-black font-black py-5 rounded-2xl uppercase text-[11px] tracking-[0.5em] hover:bg-purple-500 hover:text-white transition-all shadow-xl disabled:opacity-50 flex justify-center items-center gap-2">
+                  {isInviting ? <Loader2 size={18} className="animate-spin" /> : 'GENERAR LLAVE'}
+                </button>
+              </form>
+
+            /* PANTALLA 2: ÉXITO Y COPIAR CONTRASEÑA */
+            ) : (
+              <div className="space-y-8 animate-in zoom-in duration-500">
+                <div className="bg-green-500/10 w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto border border-green-500/20">
+                  <Check className="text-green-500" size={32} />
+                </div>
+                <div>
+                  <h2 className="text-white font-black uppercase italic text-2xl tracking-tighter">Acceso Generado</h2>
+                  <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest mt-2">{inviteForm.full_name}</p>
+                </div>
+                
+                <div className="bg-white/5 border border-dashed border-white/20 p-8 rounded-[2.5rem] text-[#00E5FF] font-mono text-3xl font-black italic tracking-[0.2em] shadow-inner">
+                  {generatedPassword}
+                </div>
+                
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(`¡Hola ${inviteForm.full_name}!\n\nTu acceso a Botisfy Labs ha sido creado:\nEmail: ${inviteForm.email}\nClave: ${generatedPassword}`); 
+                    setCopied(true); 
+                    setTimeout(() => setCopied(false), 2000);
+                  }} 
+                  className={`w-full py-6 rounded-2xl font-black uppercase text-[11px] tracking-[0.3em] flex items-center justify-center gap-3 transition-all ${copied ? 'bg-green-600 text-white shadow-[0_0_20px_rgba(34,197,94,0.3)]' : 'bg-[#00E5FF] text-black shadow-xl shadow-black/50 hover:bg-white'}`}
+                >
+                   {copied ? <Check size={18}/> : <Copy size={18}/>} 
+                   {copied ? '¡CREDENCIAL COPIADA!' : 'COPIAR ACCESO'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* HEADER GERENCIAL */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-[#050505] border border-white/5 p-8 rounded-[2rem] relative overflow-hidden group">
         <div className="absolute top-0 right-0 w-64 h-64 bg-[#00E5FF]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 group-hover:bg-[#00E5FF]/10 transition-colors duration-500" />
         <div className="relative z-10">
@@ -97,12 +224,12 @@ function VistaAdmin({ profile }: { profile: any }) {
           </h1>
           <p className="text-zinc-500 text-[10px] font-black tracking-[0.3em] uppercase flex items-center gap-2 italic">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Workspace Activo — Botisfy Labs
+            Conectado a Base de Datos
           </p>
         </div>
       </div>
 
-      {/* GRID DE MÉTRICAS DE EQUIPO */}
+      {/* GRID DE MÉTRICAS */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {adminStats.map((stat, i) => (
           <div key={i} className="bg-[#050505] border border-white/5 p-8 rounded-3xl relative overflow-hidden group hover:border-[#00E5FF]/30 transition-all">
@@ -112,20 +239,23 @@ function VistaAdmin({ profile }: { profile: any }) {
             </div>
             <div className="relative z-10">
               <p className="text-zinc-500 text-[9px] font-black tracking-[0.2em] uppercase mb-1">{stat.label}</p>
-              <h3 className="text-4xl font-black text-white tracking-tighter">{stat.value}</h3>
+              <h3 className="text-4xl font-black text-white tracking-tighter">
+                {loadingData && i === 0 ? <Loader2 size={32} className="animate-spin text-zinc-600" /> : stat.value}
+              </h3>
             </div>
           </div>
         ))}
       </section>
 
-      {/* GESTIÓN DE COLABORADORES Y TABLA DE ACTIVIDAD */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        
-        {/* BOTONES DE ACCIÓN RÁPIDA */}
+        {/* BOTONES LATERALES */}
         <div className="xl:col-span-1 space-y-6">
           <h2 className="text-xs font-black text-white tracking-[0.4em] uppercase italic px-2">Acciones</h2>
           <div className="flex flex-col gap-4">
-            <button className="flex items-center gap-4 p-6 bg-[#050505] border border-white/5 rounded-3xl hover:border-purple-500/50 transition-all group w-full text-left">
+            <button 
+              onClick={() => { setShowInviteModal(true); setGeneratedPassword(''); }}
+              className="flex items-center gap-4 p-6 bg-[#050505] border border-white/5 rounded-3xl hover:border-purple-500/50 transition-all group w-full text-left"
+            >
               <div className="p-3 bg-purple-500/10 rounded-xl text-purple-500 group-hover:scale-110 transition-transform"><UserPlus size={24} /></div>
               <div>
                 <span className="block text-[10px] font-black text-white tracking-widest uppercase">Invitar Colaborador</span>
@@ -149,9 +279,9 @@ function VistaAdmin({ profile }: { profile: any }) {
           </div>
         </div>
 
-        {/* TABLA DE PROGRESO AL ESTILO "USUARIOS" */}
+        {/* TABLA DINÁMICA CON USUARIOS REALES */}
         <div className="xl:col-span-2 space-y-6">
-          <h2 className="text-xs font-black text-white tracking-[0.4em] uppercase italic px-2">Progreso Reciente</h2>
+          <h2 className="text-xs font-black text-white tracking-[0.4em] uppercase italic px-2">Registros Recientes</h2>
           <div className="bg-[#050505] border border-white/5 rounded-[2rem] overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -159,41 +289,43 @@ function VistaAdmin({ profile }: { profile: any }) {
                   <tr className="border-b border-white/5 bg-white/[0.02]">
                     <th className="py-4 px-6 text-[9px] font-black text-zinc-600 tracking-[0.3em] uppercase">Colaborador</th>
                     <th className="py-4 px-6 text-[9px] font-black text-zinc-600 tracking-[0.3em] uppercase">Última Acción</th>
-                    <th className="py-4 px-6 text-[9px] font-black text-zinc-600 tracking-[0.3em] uppercase text-right">Tiempo</th>
+                    <th className="py-4 px-6 text-[9px] font-black text-zinc-600 tracking-[0.3em] uppercase text-right">Fecha</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {recentProgress.map((item, i) => (
+                  {loadingData ? (
+                    <tr>
+                      <td colSpan={3} className="py-12 text-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-[#00E5FF] mx-auto mb-2" />
+                        <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Sincronizando...</span>
+                      </td>
+                    </tr>
+                  ) : recentUsers.map((user, i) => (
                     <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors last:border-0">
-                      
-                      {/* COLUMNA: USUARIO (Igual a la captura de Usuarios) */}
                       <td className="py-5 px-6">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-full bg-[#00E5FF]/10 flex items-center justify-center text-sm font-black text-[#00E5FF] uppercase border border-[#00E5FF]/20 flex-shrink-0">
-                            {item.user.charAt(0)}
+                            {user.full_name ? user.full_name.charAt(0) : 'U'}
                           </div>
                           <div>
-                            <p className="text-sm font-black text-white uppercase tracking-tighter">{item.user}</p>
-                            <p className="text-[10px] text-zinc-500 font-medium">{item.email}</p>
+                            <p className="text-sm font-black text-white uppercase tracking-tighter">{user.full_name || 'Usuario'}</p>
+                            <p className="text-[10px] text-zinc-500 font-medium">Nivel: {user.role || 'estudiante'}</p>
                           </div>
                         </div>
                       </td>
-
-                      {/* COLUMNA: ACCIÓN */}
                       <td className="py-5 px-6">
                         <div className="flex items-center gap-2.5">
-                          <div className={`p-1.5 rounded-md ${item.bg} ${item.color}`}>
-                            <item.icon size={12} strokeWidth={3} />
+                          <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-500">
+                            <UserPlus size={12} strokeWidth={3} />
                           </div>
-                          <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest">{item.action}</span>
+                          <span className="text-[10px] font-black text-zinc-300 uppercase tracking-widest">Nuevo Registro</span>
                         </div>
                       </td>
-
-                      {/* COLUMNA: TIEMPO */}
                       <td className="py-5 px-6 text-right">
-                        <span className="text-[10px] font-bold text-zinc-600 italic tracking-wider">{item.time}</span>
+                        <span className="text-[10px] font-bold text-zinc-600 italic tracking-wider">
+                          {user.created_at ? new Date(user.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : 'Reciente'}
+                        </span>
                       </td>
-
                     </tr>
                   ))}
                 </tbody>
@@ -202,7 +334,6 @@ function VistaAdmin({ profile }: { profile: any }) {
           </div>
         </div>
       </div>
-
     </div>
   )
 }
@@ -225,6 +356,5 @@ export default function DashboardPage() {
   }
 
   const role = profile?.role?.toLowerCase() || 'estudiante'
-
   return role === 'admin' ? <VistaAdmin profile={profile} /> : <VistaEstudiante profile={profile} />
 }
