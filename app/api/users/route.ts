@@ -2,19 +2,19 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 // ============================================================================
-// 1. CREAR USUARIO (Y GUARDAR SU CORREO EN EL PERFIL)
+// 1. CREAR USUARIO (AHORA SÍ GUARDANDO EL CORREO EN TU COLUMNA)
 // ============================================================================
 export async function POST(request: Request) {
   try {
     const { email, password, full_name, role } = await request.json()
 
-    // Llave maestra para saltar reglas de seguridad
+    // Llave maestra para operar con permisos de administrador global
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // A. Creamos el núcleo en la Bóveda de Auth
+    // A. Creamos la credencial en la Bóveda de Autenticación
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -24,48 +24,65 @@ export async function POST(request: Request) {
 
     if (authError) throw authError
 
-    // B. Guardamos el Perfil Público (¡AHORA INCLUYENDO EL CORREO!)
+    // B. Registramos en tu tabla pública 'profiles' asegurando el campo email
     if (authData?.user) {
-      await supabaseAdmin.from('profiles').update({
+      const { error: profileError } = await supabaseAdmin.from('profiles').update({
         full_name: full_name,
         role: role,
-        email: email // <- Aquí conectamos el correo a la tabla visible
+        email: email // <- El puente que faltaba para tu columna
       }).eq('id', authData.user.id)
+
+      if (profileError) {
+        console.error("Error de Supabase al actualizar perfil:", profileError)
+      }
     }
 
     return NextResponse.json({ success: true, message: 'Usuario creado exitosamente.' })
     
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Error al crear usuario' }, { status: 400 })
+    // Extraemos el mensaje real o mandamos el objeto crudo para debug
+    const errorMessage = error?.message || error?.error_description || JSON.stringify(error)
+    return NextResponse.json({ error: errorMessage }, { status: 400 })
   }
 }
 
 // ============================================================================
-// 2. ELIMINAR USUARIO (DOBLE BORRADO ANTI-ERRORES)
+// 2. ELIMINAR USUARIO (LIMPIEZA LETAL Y SEGURA)
 // ============================================================================
 export async function DELETE(request: Request) {
   try {
     const { id } = await request.json()
 
-    if (!id) throw new Error('ID de usuario no proporcionado')
+    if (!id) throw new Error('El sistema no detectó el ID del usuario.')
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // A. Borramos el perfil público primero (Evita el bloqueo de la base de datos)
-    await supabaseAdmin.from('profiles').delete().eq('id', id)
+    // A. Forzamos primero la eliminación en la tabla visible (profiles)
+    // Esto evita bloqueos de Foreign Key
+    const { error: profileError } = await supabaseAdmin.from('profiles').delete().eq('id', id)
+    if (profileError) {
+      console.error("Detalle del error en profiles:", profileError)
+      throw new Error(`Fallo en profiles: ${profileError.message || profileError.code}`)
+    }
 
-    // B. Borramos el núcleo de la Bóveda de Auth
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(id)
+    // B. Eliminamos el acceso maestro en auth.users
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id)
+    
+    // Si da error 404 significa que ya no existía (quizás lo borraste a mano).
+    // Lo ignoramos para no asustar al usuario y damos el borrado por bueno.
+    if (authError && authError.status !== 404) {
+      console.error("Detalle del error en auth.users:", authError)
+      throw new Error(`Fallo en Auth: ${authError.message}`)
+    }
 
-    if (error) throw error
-
-    return NextResponse.json({ success: true, message: 'Usuario eliminado por completo.' })
+    return NextResponse.json({ success: true, message: 'Registro purgado de la base de datos.' })
     
   } catch (error: any) {
-    // Si falla, enviamos el error limpio al frontend en lugar de un "null"
-    return NextResponse.json({ error: error.message || 'Error desconocido del servidor' }, { status: 400 })
+    // Ahora si falla, la alerta de tu pantalla te dirá EXACTAMENTE por qué.
+    const errorMessage = error?.message || JSON.stringify(error) || 'Fallo crítico no identificado.'
+    return NextResponse.json({ error: errorMessage }, { status: 400 })
   }
 }
