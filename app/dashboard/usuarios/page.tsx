@@ -110,27 +110,24 @@ export default function UsuariosPage() {
     }
   }
 
-  // 4. ELIMINAR USUARIO DESDE LA RAÍZ
+  // =========================================================
+  // 4. ELIMINAR USUARIO (RESTAURADO A SU ORDEN ORIGINAL)
+  // =========================================================
   const handleDeleteUser = async (id: string) => {
-    if(confirm("¿Estás seguro de que deseas eliminar este registro por completo? (Esta acción eliminará su acceso y sus datos en la base)")) {
+    if(confirm('¿Confirmar baja de sistema?')) {
       try {
-        const response = await fetch('/api/users', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id })
-        })
+        // Volvemos a tu lógica original que borraba directo en la tabla
+        const { error } = await supabase.from('profiles').delete().eq('id', id)
+        if (error) throw error
         
-        const result = await response.json()
-        if (!response.ok) throw new Error(result.error)
-        
-        fetchUsers() 
+        fetchUsers() // Recarga la tabla al instante
       } catch (err: any) {
         alert("Error al eliminar: " + err.message)
       }
     }
   }
 
-  // FILTRO DE BÚSQUEDA (AHORA BUSCA POR NOMBRE, ROL Y CORREO)
+  // FILTRO DE BÚSQUEDA
   const filteredUsers = users.filter(u => 
     (u.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
     (u.role || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -305,7 +302,7 @@ export default function UsuariosPage() {
                 filteredUsers.map((user, i) => (
                   <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors last:border-0 group">
                     
-                    {/* COLUMNA 1: AVATAR, NOMBRE Y CORREO REAL */}
+                    {/* COLUMNA 1: AVATAR, NOMBRE Y CORREO */}
                     <td className="py-5 px-8">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center text-sm font-black text-purple-500 uppercase border border-purple-500/20 flex-shrink-0">
