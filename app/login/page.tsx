@@ -1,16 +1,19 @@
 'use client'
 import { useState } from 'react'
-import { createClient } from '../../lib/supabase'
+import { createClient } from '@/lib/supabase'
+import { useRouter } from 'next/navigation' // 1. IMPORTAMOS EL ENRUTADOR
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  
   const supabase = createClient()
+  const router = useRouter() // 2. INICIALIZAMOS EL ENRUTADOR
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true) // Activa la pantalla de carga
+    setLoading(true) 
     
     const { data, error } = await supabase.auth.signInWithPassword({ 
       email: email.trim(), 
@@ -25,13 +28,13 @@ export default function LoginPage() {
 
     if (data?.session) {
       setTimeout(() => {
-        // CORRECCIÓN: Ahora dirige al dashboard principal
-        window.location.assign('/dashboard')
+        // 3. LA MAGIA: Navegación suave sin destruir la memoria
+        router.push('/dashboard')
       }, 400)
     }
   }
 
-  // LA PANTALLA DE CARGA RESTAURADA CON TU LOGO
+  // PANTALLA DE CARGA
   if (loading) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#00E5FF]/5 blur-[150px] pointer-events-none" />

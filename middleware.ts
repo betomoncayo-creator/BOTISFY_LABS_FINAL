@@ -1,41 +1,9 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request: { headers: request.headers } })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        get(name: string) { return request.cookies.get(name)?.value },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options })
-          response = NextResponse.next({ request: { headers: request.headers } })
-          response.cookies.set({ name, value, ...options })
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: '', ...options })
-          response = NextResponse.next({ request: { headers: request.headers } })
-          response.cookies.set({ name, value: '', ...options })
-        },
-      },
-    }
-  )
-
-  const { data: { session } } = await supabase.auth.getSession()
-
-  // SOLO ESTA REGLA ES NECESARIA:
-  // Si intenta entrar al dashboard sin sesión, mándalo al login.
-  if (!session && request.nextUrl.pathname.startsWith('/dashboard')) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
-  // ELIMINAMOS la regla que te mandaba a Academia si había sesión.
-  // Así, cuando el botón de Logout actúe, el middleware no interferirá.
-
-  return response
+  // En entornos como StackBlitz, las cookies se bloquean en el servidor por políticas de iframes.
+  // Dejaremos que la protección de rutas la maneje exclusivamente el Layout del cliente.
+  return NextResponse.next()
 }
 
 export const config = {

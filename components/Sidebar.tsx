@@ -1,37 +1,23 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useContext } from 'react'
 import { LayoutDashboard, Users, BookOpen, Settings, LogOut, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import { UserContext } from '@/lib/context' // Importamos el contexto maestro
 
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
   
-  const [role, setRole] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  // 1. En lugar de hacer fetchings locos, le pedimos la info al Layout Principal
+  const { profile, loadingProfile } = useContext(UserContext)
+  
+  // 2. Extraemos el rol, si no hay, por defecto es estudiante
+  const role = profile?.role?.toLowerCase() || 'estudiante'
 
-  // 1. Obtener el rol del usuario al cargar
-  useEffect(() => {
-    const getRole = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        
-        setRole(data?.role || 'estudiante')
-      }
-      setLoading(false)
-    }
-    getRole()
-  }, [])
-
-  // 2. Definición maestra de rutas
+  // 3. Definición maestra de rutas
   const navItems = [
     { name: 'DASHBOARD', href: '/dashboard', icon: LayoutDashboard, roles: ['admin', 'estudiante'] },
     { name: 'USUARIOS', href: '/dashboard/usuarios', icon: Users, roles: ['admin'] },
@@ -39,12 +25,11 @@ export default function Sidebar() {
     { name: 'AJUSTES', href: '/dashboard/settings', icon: Settings, roles: ['admin'] },
   ]
 
-  // 3. Filtrar items según el rol actual
-  const filteredItems = navItems.filter(item => role && item.roles.includes(role))
+  // 4. Filtrar items según el rol actual
+  const filteredItems = navItems.filter(item => item.roles.includes(role))
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    // Limpieza profunda de seguridad
     document.cookie.split(";").forEach((c) => {
       document.cookie = c
         .replace(/^ +/, "")
@@ -80,9 +65,9 @@ export default function Sidebar() {
 
         {/* NAVEGACIÓN INTELIGENTE */}
         <nav className="space-y-4">
-          {loading ? (
+          {loadingProfile ? (
             <div className="flex items-center justify-center py-10">
-              <Loader2 className="animate-spin text-zinc-800" size={20} />
+              <Loader2 className="animate-spin text-[#00E5FF]" size={20} />
             </div>
           ) : (
             filteredItems.map((item) => (
@@ -104,8 +89,7 @@ export default function Sidebar() {
 
       {/* CONTENEDOR INFERIOR */}
       <div className="border-t border-white/5 pt-10 mt-auto">
-        {/* Indicador de Rol (Opcional, muy útil para debug) */}
-        {!loading && (
+        {!loadingProfile && (
           <div className="mb-4 px-6 py-2 bg-white/5 rounded-lg border border-white/5">
              <p className="text-[8px] font-black text-zinc-600 uppercase tracking-widest">Sesión: {role}</p>
           </div>
