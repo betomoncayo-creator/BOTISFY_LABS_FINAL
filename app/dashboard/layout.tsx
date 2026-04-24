@@ -1,70 +1,59 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
-import { Menu, X } from 'lucide-react'
-import Image from 'next/image'
 import { createClient } from '@/lib/supabase'
 import { UserContext } from '@/lib/context' 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const pathname = usePathname()
   const router = useRouter()
   const [supabase] = useState(() => createClient())
-
   const [profile, setProfile] = useState<any>(null)
   const [loadingProfile, setLoadingProfile] = useState(true)
 
-  const fetchProfile = useCallback(async () => {
-    setLoadingProfile(true)
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (user) {
-        // Consultamos el perfil real
+  useEffect(() => {
+    // 🛡️ ESCUCHA REACTIVA: Supabase nos avisa en cuanto la sesión esté lista
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Evento Auth:", event, "ID:", session?.user?.id)
+
+      if (session?.user) {
+        // Buscamos el perfil real
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', user.id)
+          .eq('id', session.user.id)
           .maybeSingle()
-        
-        if (error) console.error("Error al obtener perfil:", error)
 
-        // Si el registro existe, lo usamos. Si no, forzamos estudiante por seguridad.
         if (data) {
-          console.log("Perfil cargado:", data.full_name, "Rol:", data.role)
           setProfile(data)
         } else {
-          console.warn("No se encontró registro en 'profiles' para este ID. Usando default.")
-          setProfile({ role: 'estudiante', full_name: user.email?.split('@')[0] })
+          // Si no hay perfil, evitamos el bucle pero asignamos rol base
+          setProfile({ role: 'estudiante', full_name: session.user.email?.split('@')[0] })
         }
+        setLoadingProfile(false)
       } else {
+        // Solo redirigimos si realmente NO hay sesión
+        setLoadingProfile(false)
         router.replace('/login')
       }
-    } catch (err) {
-      console.error("Fallo crítico en Layout:", err)
-    } finally {
-      setLoadingProfile(false)
-    }
+    })
+
+    return () => subscription.unsubscribe()
   }, [supabase, router])
 
-  useEffect(() => { fetchProfile() }, [fetchProfile])
-
-  const logout = async () => {
-    await supabase.auth.signOut()
-    localStorage.clear()
-    window.location.href = '/login'
+  if (loadingProfile) {
+    return (
+      <div className="h-screen bg-black flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-[#00E5FF]/20 border-t-[#00E5FF] rounded-full animate-spin" />
+      </div>
+    )
   }
 
-  // ... resto del componente igual (Sidebar, Main, etc.)
   return (
-    <UserContext.Provider value={{ profile, loadingProfile, logout }}>
+    <UserContext.Provider value={{ profile, loadingProfile, logout: () => supabase.auth.signOut() }}>
       <div className="flex h-screen bg-black overflow-hidden relative w-full">
-        <div className={`fixed md:relative top-0 left-0 h-full z-50 transform transition-transform duration-500 ease-in-out md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-          <Sidebar />
-        </div>
-        <main className="flex-1 overflow-y-auto w-full h-full pt-28 md:pt-8 p-4 md:p-8">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto w-full h-full p-4 md:p-8">
           {children}
         </main>
       </div>
