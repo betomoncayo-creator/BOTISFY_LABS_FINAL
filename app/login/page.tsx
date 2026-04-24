@@ -21,12 +21,13 @@ export default function LoginPage() {
     })
     
     if (error) {
-      alert('Error: ' + error.message)
+      alert('Error de acceso: ' + error.message)
       setLoading(false)
       return
     }
 
     if (data?.session) {
+      // Navegación suave para evitar que StackBlitz pierda la sesión
       router.push('/dashboard')
     }
   }
@@ -45,14 +46,14 @@ export default function LoginPage() {
             type="email" 
             required 
             placeholder="EMAIL@BOTISFY.COM" 
-            className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-sm text-white outline-none focus:border-[#00E5FF] font-bold" 
+            className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-sm text-white outline-none focus:border-[#00E5FF] font-bold placeholder:text-zinc-700" 
             onChange={(e) => setEmail(e.target.value)} 
           />
           <input 
             type="password" 
             required 
             placeholder="CONTRASEÑA" 
-            className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-sm text-white outline-none focus:border-[#00E5FF] font-bold" 
+            className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-sm text-white outline-none focus:border-[#00E5FF] font-bold placeholder:text-zinc-700" 
             onChange={(e) => setPassword(e.target.value)} 
           />
           <button 
