@@ -10,14 +10,44 @@
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: black; /* Forzamos negro total */
+  background: black; /* Forzamos negro total para coherencia de marca */
   margin: 0;
   padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Opcional: Para que el scroll se vea bien en modo oscuro */
+/* 🚀 MOTOR DE ANIMACIONES PROFESIONALES */
+
+/* 1. Animación de la barra de carga (Progress Bar) */
+@keyframes progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-progress {
+  animation: progress 2s infinite ease-in-out;
+}
+
+/* 2. Animación de pulso orgánico para el logo */
+@keyframes botisfy-pulse {
+  0%, 100% { 
+    transform: scale(1); 
+    filter: drop-shadow(0 0 20px rgba(0, 229, 255, 0.1)); 
+  }
+  50% { 
+    transform: scale(0.97); 
+    filter: drop-shadow(0 0 40px rgba(0, 229, 255, 0.3)); 
+  }
+}
+
+.animate-botisfy-pulse {
+  animation: botisfy-pulse 3s infinite ease-in-out;
+}
+
+/* Personalización del Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 ::-webkit-scrollbar-track {
   background: #050505;
@@ -25,4 +55,8 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #1a1a1a;
   border-radius: 10px;
+  transition: all 0.3s;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00E5FF; /* Color cyan de la marca al hacer hover */
 }
