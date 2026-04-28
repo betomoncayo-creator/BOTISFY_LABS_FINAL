@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-// Cliente con privilegios de Service Role para bypass de RLS
+// Forzamos a Next.js a no cachear esta API
+export const dynamic = 'force-dynamic'
+
 const getAdminClient = () => {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
 
     if (authError) throw authError
 
+    // Sincronización manual del perfil
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .update({ full_name, role })
@@ -51,11 +54,15 @@ export async function DELETE(request: Request) {
 
     const supabaseAdmin = getAdminClient()
 
-    // 🛡️ REGLA DE PERSISTENCIA: Borramos de la tabla pública primero 
-    // para que el Directorio deje de verlo instantáneamente.
-    await supabaseAdmin.from('profiles').delete().eq('id', id)
+    // 1. Borrado físico en la tabla pública
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .delete()
+      .eq('id', id)
+    
+    if (profileError) throw profileError
 
-    // Borramos la cuenta de autenticación
+    // 2. Borrado en la cuenta de autenticación
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id)
     
     if (authError && authError.status !== 404) throw authError
