@@ -3,17 +3,45 @@ import { useContext } from 'react'
 import { UserContext } from '@/lib/context'
 import { 
   Users, CheckCircle, Clock, Award, 
-  UserPlus, BookOpen, ChevronRight, Zap
+  UserPlus, BookOpen, Zap, Shield
 } from 'lucide-react'
-import Link from 'next/link'
 
 export default function DashboardPage() {
   const { profile } = useContext(UserContext)
+  
+  // Extraemos datos del perfil
   const firstName = profile?.full_name?.split(' ')[0]?.toUpperCase() || 'FREDDY'
+  const role = profile?.role?.toUpperCase() || 'ADMIN'
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700">
       
+      {/* 0. HEADER DE BIENVENIDA */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-[#050505] border border-white/5 p-8 rounded-[2.5rem] relative overflow-hidden">
+        {/* Luz de fondo sutil */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 blur-[80px] pointer-events-none" />
+        
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-3">
+            <p className="text-cyan-400 text-[10px] font-black uppercase tracking-[0.4em] flex items-center gap-2">
+              <Zap size={14} fill="currentColor" /> SISTEMA OPERATIVO
+            </p>
+            {/* Etiqueta dinámica de Nivel/Rol */}
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${role === 'ADMIN' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' : 'bg-purple-500/10 text-purple-400 border-purple-500/20'}`}>
+              {role === 'ADMIN' ? <Shield size={10} /> : <Users size={10} />}
+              NIVEL: {role}
+            </div>
+          </div>
+          <h1 className="text-4xl md:text-5xl font-black text-white italic uppercase tracking-tighter">
+            HOLA, <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-zinc-500">{firstName}</span>
+          </h1>
+        </div>
+        
+        <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-[0.2em] max-w-[200px] text-left md:text-right relative z-10 hidden md:block">
+          Panel de control centralizado. Resumen de actividad en tiempo real.
+        </p>
+      </div>
+
       {/* 1. MÉTRICAS HORIZONTALES (TOP) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <MetricCard icon={<Users size={18}/>} label="Colaboradores Activos" value="2" color="text-cyan-400" />
