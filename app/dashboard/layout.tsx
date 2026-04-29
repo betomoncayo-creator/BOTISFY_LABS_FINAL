@@ -76,7 +76,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="w-1.5 h-1.5 bg-[#00E5FF] rounded-full animate-bounce" />
             </div>
             <p className="text-[#00E5FF] text-[10px] font-black uppercase tracking-[1em] ml-[1em]">
-              Sincronizando Nodo
+              CARGANDO
             </p>
           </div>
         </div>
