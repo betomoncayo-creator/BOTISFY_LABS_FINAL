@@ -60,3 +60,9 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #00E5FF; /* Color cyan de la marca al hacer hover */
 }
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+.group-hover\:animate-shimmer {
+  animation: shimmer 1s infinite;
+}
