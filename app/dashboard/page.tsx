@@ -2,143 +2,128 @@
 import { useContext } from 'react'
 import { UserContext } from '@/lib/context'
 import { 
-  Users, CheckCircle, Clock, Award, 
-  UserPlus, BookOpen, Zap, Shield
+  Users, 
+  Zap, 
+  Clock, 
+  Award, 
+  UserPlus, 
+  BookOpen,
+  Activity,
+  ShieldCheck
 } from 'lucide-react'
 
 export default function DashboardPage() {
   const { profile } = useContext(UserContext)
-  
-  // Extraemos datos del perfil
-  const firstName = profile?.full_name?.split(' ')[0]?.toUpperCase() || 'FREDDY'
-  const role = profile?.role?.toUpperCase() || 'ADMIN'
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-10 animate-in fade-in duration-700">
       
-      {/* 0. HEADER DE BIENVENIDA */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-[#050505] border border-white/5 p-8 rounded-[2.5rem] relative overflow-hidden">
-        {/* Luz de fondo sutil */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 blur-[80px] pointer-events-none" />
+      {/* ⚡ CABECERA ESTILO DIRECTORIO (ESTANDARIZADA) */}
+      <div className="bg-[#050505] border border-white/5 p-8 md:p-12 rounded-[3rem] relative overflow-hidden">
+        {/* Resplandor ambiental de fondo */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-[#00E5FF]/5 blur-[120px] -mr-40 -mt-40 pointer-events-none" />
         
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-3">
-            <p className="text-cyan-400 text-[10px] font-black uppercase tracking-[0.4em] flex items-center gap-2">
-              <Zap size={14} fill="currentColor" /> SISTEMA OPERATIVO
-            </p>
-            {/* Etiqueta dinámica de Nivel/Rol */}
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest ${role === 'ADMIN' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' : 'bg-purple-500/10 text-purple-400 border-purple-500/20'}`}>
-              {role === 'ADMIN' ? <Shield size={10} /> : <Users size={10} />}
-              NIVEL: {role}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative z-10">
+          <div className="space-y-2">
+            {/* TÍTULO PRINCIPAL: Itálico, Black, Tracking Tighter */}
+            <h1 className="text-4xl md:text-6xl font-black italic text-white tracking-tighter uppercase leading-none">
+              Hola, <span className="text-[#00E5FF] drop-shadow-[0_0_15px_rgba(0,229,255,0.3)]">
+                {profile?.full_name?.split(' ')[0] || 'Freddy'}
+              </span>
+            </h1>
+            
+            {/* SUBTÍTULO: Zinc, Negrita, Tracking Extendido (0.5em) */}
+            <div className="flex items-center gap-3 mt-4">
+              <span className="w-8 h-[1px] bg-[#00E5FF]/30"></span>
+              <p className="text-zinc-500 text-[10px] md:text-[11px] font-bold uppercase tracking-[0.5em] ml-1">
+                Panel de Control Centralizado
+              </p>
             </div>
           </div>
-          <h1 className="text-4xl md:text-5xl font-black text-white italic uppercase tracking-tighter">
-            HOLA, <span className="text-transparent bg-clip-text bg-gradient-to-r from-white to-zinc-500">{firstName}</span>
-          </h1>
+
+          {/* Badge de Nivel de Acceso en el lado derecho */}
+          <div className="flex items-center gap-4 bg-white/5 border border-white/10 px-6 py-4 rounded-2xl self-start lg:self-center">
+            <ShieldCheck size={18} className="text-[#00E5FF]" />
+            <div className="text-left">
+              <p className="text-zinc-500 text-[8px] font-black uppercase tracking-widest">Nivel de Acceso</p>
+              <p className="text-white text-[10px] font-bold uppercase tracking-widest">{profile?.role || 'Admin'}</p>
+            </div>
+          </div>
         </div>
-        
-        <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-[0.2em] max-w-[200px] text-left md:text-right relative z-10 hidden md:block">
-          Panel de control centralizado. Resumen de actividad en tiempo real.
-        </p>
       </div>
 
-      {/* 1. MÉTRICAS HORIZONTALES (TOP) */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <MetricCard icon={<Users size={18}/>} label="Colaboradores Activos" value="2" color="text-cyan-400" />
-        <MetricCard icon={<CheckCircle size={18}/>} label="Tasa de Finalización" value="85%" color="text-purple-400" />
-        <MetricCard icon={<Clock size={18}/>} label="Horas Capacitación" value="124" color="text-amber-400" />
-        <MetricCard icon={<Award size={18}/>} label="Certificados Emitidos" value="12" color="text-emerald-400" />
+      {/* 📊 GRID DE ESTADÍSTICAS (MANTENIENDO EL ESTILO) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { label: 'Colaboradores Activos', value: '2', icon: Users, color: 'text-blue-400' },
+          { label: 'Tasa de Finalización', value: '85%', icon: Zap, color: 'text-purple-400' },
+          { label: 'Horas Capacitación', value: '124', icon: Clock, color: 'text-yellow-400' },
+          { label: 'Certificados Emitidos', value: '12', icon: Award, color: 'text-green-400' },
+        ].map((stat, i) => (
+          <div key={i} className="bg-[#050505] border border-white/5 p-8 rounded-[2.5rem] hover:border-white/10 transition-all group">
+            <stat.icon className={`${stat.color} mb-6 opacity-40 group-hover:opacity-100 transition-opacity`} size={20} />
+            <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest mb-2">{stat.label}</p>
+            <p className="text-white text-3xl font-black italic tracking-tighter">{stat.value}</p>
+          </div>
+        ))}
       </div>
 
+      {/* SECCIÓN DE ACCIONES Y REGISTROS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* 2. ACCIONES RÁPIDAS (ABAJO IZQUIERDA) */}
-        <div className="lg:col-span-1 space-y-4">
-          <h3 className="text-white font-black uppercase italic text-[10px] tracking-[0.3em] mb-6 opacity-50">Acciones</h3>
+        {/* Columna de Acceso Rápido */}
+        <div className="space-y-6">
+          <h3 className="text-zinc-500 text-[10px] font-black uppercase tracking-[0.4em] ml-4 mb-6">Acciones</h3>
           
-          <button className="w-full bg-[#050505] border border-white/5 p-6 rounded-[2rem] flex items-center gap-4 hover:border-cyan-500/50 transition-all group">
-            <div className="w-12 h-12 bg-cyan-500/10 rounded-2xl flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+          <button className="w-full bg-white/5 border border-white/5 hover:border-[#00E5FF]/30 p-6 rounded-[2rem] flex items-center gap-6 group transition-all">
+            <div className="w-12 h-12 bg-[#00E5FF]/10 rounded-2xl flex items-center justify-center text-[#00E5FF]">
               <UserPlus size={20} />
             </div>
             <div className="text-left">
-              <p className="text-white font-black text-[11px] uppercase italic">Invitar Colaborador</p>
-              <p className="text-zinc-600 text-[9px] font-bold uppercase">Añadir nuevo acceso</p>
+              <p className="text-white text-[11px] font-black uppercase tracking-widest">Invitar Colaborador</p>
+              <p className="text-zinc-600 text-[9px] font-medium uppercase mt-1">Añadir nuevo acceso</p>
             </div>
           </button>
 
-          <button className="w-full bg-[#050505] border border-white/5 p-6 rounded-[2rem] flex items-center gap-4 hover:border-purple-500/50 transition-all group">
-            <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
+          <button className="w-full bg-white/5 border border-white/5 hover:border-[#A855F7]/30 p-6 rounded-[2rem] flex items-center gap-6 group transition-all">
+            <div className="w-12 h-12 bg-[#A855F7]/10 rounded-2xl flex items-center justify-center text-[#A855F7]">
               <BookOpen size={20} />
             </div>
             <div className="text-left">
-              <p className="text-white font-black text-[11px] uppercase italic">Asignar Capacitación</p>
-              <p className="text-zinc-600 text-[9px] font-bold uppercase">Gestionar módulos</p>
+              <p className="text-white text-[11px] font-black uppercase tracking-widest">Asignar Capacitación</p>
+              <p className="text-zinc-600 text-[9px] font-medium uppercase mt-1">Gestionar módulos</p>
             </div>
           </button>
         </div>
 
-        {/* 3. REGISTROS RECIENTES (DERECHA) */}
-        <div className="lg:col-span-2 bg-[#050505] border border-white/5 p-8 rounded-[3rem] relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-40 h-40 bg-cyan-500/5 blur-[80px] pointer-events-none" />
-          
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-white font-black uppercase italic text-sm tracking-widest flex items-center gap-3">
-              Registros Recientes
-            </h3>
-            <Zap size={14} className="text-cyan-500 animate-pulse" />
+        {/* Tabla de Registros Recientes */}
+        <div className="lg:col-span-2 bg-[#050505] border border-white/5 rounded-[3rem] p-8 md:p-10 relative overflow-hidden">
+          <div className="flex items-center justify-between mb-10">
+            <h3 className="text-white text-xl font-black italic tracking-tighter uppercase">Registros Recientes</h3>
+            <Activity size={18} className="text-[#00E5FF] opacity-50" />
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-white/5">
-                  <th className="pb-4 text-[9px] font-black text-zinc-600 uppercase tracking-widest">Colaborador</th>
-                  <th className="pb-4 text-[9px] font-black text-zinc-600 uppercase tracking-widest text-right">Última Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                <RecentRow name="Freddy Moncayo" level="Admin" action="Acceso al sistema" />
-                <RecentRow name="Jenny" level="Estudiante" action="Completó Módulo IA" />
-                <RecentRow name="Julito" level="Colaborador" action="Perfil actualizado" />
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            {[
+              { name: 'Freddy Moncayo', role: 'Admin', action: 'Acceso al Sistema', time: 'Ahora' },
+              { name: 'Jenny', role: 'Estudiante', action: 'Completó Módulo IA', time: 'Hace 2h' },
+              { name: 'Julito', role: 'Colaborador', action: 'Perfil Actualizado', time: 'Ayer' },
+            ].map((reg, i) => (
+              <div key={i} className="flex items-center justify-between p-4 rounded-2xl hover:bg-white/[0.02] transition-colors border border-transparent hover:border-white/5">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-[10px] font-black text-zinc-500 uppercase">
+                    {reg.name[0]}
+                  </div>
+                  <div>
+                    <p className="text-white text-[11px] font-bold uppercase tracking-tight">{reg.name}</p>
+                    <p className="text-zinc-600 text-[8px] font-black uppercase tracking-widest">{reg.role}</p>
+                  </div>
+                </div>
+                <p className="text-zinc-400 text-[9px] font-bold uppercase tracking-widest">{reg.action}</p>
+              </div>
+            ))}
           </div>
         </div>
-        
       </div>
     </div>
-  )
-}
-
-// Sub-componente para las métricas superiores
-function MetricCard({ icon, label, value, color }: any) {
-  return (
-    <div className="bg-[#050505] border border-white/5 p-6 rounded-[2rem] hover:bg-white/[0.02] transition-all">
-      <div className={`mb-4 ${color}`}>{icon}</div>
-      <p className="text-zinc-600 text-[8px] font-black uppercase tracking-[0.2em] mb-1">{label}</p>
-      <h4 className="text-2xl font-black text-white italic tracking-tighter">{value}</h4>
-    </div>
-  )
-}
-
-// Sub-componente para las filas de registros
-function RecentRow({ name, level, action }: any) {
-  return (
-    <tr className="group">
-      <td className="py-4">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-white/5 rounded-full flex items-center justify-center text-[10px] font-black text-white uppercase border border-white/10 group-hover:border-cyan-500/30 transition-colors">
-            {name.charAt(0)}
-          </div>
-          <div>
-            <p className="text-[11px] font-black text-white uppercase italic">{name}</p>
-            <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">{level}</p>
-          </div>
-        </div>
-      </td>
-      <td className="py-4 text-right">
-        <span className="text-[10px] font-bold text-zinc-400 uppercase">{action}</span>
-      </td>
-    </tr>
   )
 }
