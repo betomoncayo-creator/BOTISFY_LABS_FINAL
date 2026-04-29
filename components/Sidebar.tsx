@@ -1,10 +1,19 @@
 'use client'
+import { useContext } from 'react'
+import { UserContext } from '@/lib/context'
 import { createClient } from '@/lib/supabase'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, BookOpen, Settings, LogOut } from 'lucide-react'
+import { 
+  LayoutDashboard, 
+  Users, 
+  BookOpen, 
+  Settings, 
+  LogOut 
+} from 'lucide-react'
 import Link from 'next/link'
 
 export default function Sidebar() {
+  const { profile } = useContext(UserContext)
   const router = useRouter()
   const pathname = usePathname()
   const supabase = createClient()
@@ -14,23 +23,27 @@ export default function Sidebar() {
     router.push('/login')
   }
 
+  // 🛡️ FILTRADO DE SEGURIDAD POR ROL
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-    { name: 'Directorio', icon: Users, path: '/dashboard/usuarios' },
+    // El Directorio solo es visible para el Administrador[cite: 2]
+    ...(profile?.role === 'admin' ? [{ name: 'Directorio', icon: Users, path: '/dashboard/usuarios' }] : []),
     { name: 'Academia', icon: BookOpen, path: '/dashboard/academia' },
     { name: 'Configuración', icon: Settings, path: '/dashboard/settings' },
   ]
 
   return (
     <aside className="w-full h-full flex flex-col p-8 bg-[#050505] overflow-hidden">
+      {/* BRANDING OFICIAL */}
       <div className="flex items-center gap-4 mb-16 px-2">
         <img src="/logo-botisfy.png" alt="Botisfy Labs" className="w-10 h-10 object-contain" />
         <div className="truncate">
-          <h2 className="text-white font-black italic tracking-tighter text-xl uppercase">Botisfy</h2>
-          <p className="text-[#00E5FF] font-black italic tracking-tighter text-sm uppercase">Labs</p>
+          <h2 className="text-white font-black italic tracking-tighter text-xl uppercase leading-none">Botisfy</h2>
+          <p className="text-[#00E5FF] font-black italic tracking-tighter text-sm uppercase leading-none">Labs</p>
         </div>
       </div>
 
+      {/* NAVEGACIÓN DINÁMICA */}
       <nav className="flex-1 space-y-3">
         {menuItems.map((item) => {
           const isActive = pathname === item.path
@@ -46,8 +59,12 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-auto pt-8">
-        <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-5 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-2xl transition-all group">
+      {/* SALIDA DE SEGURIDAD */}
+      <div className="mt-auto pt-8 border-t border-white/5">
+        <button 
+          onClick={handleLogout}
+          className="w-full flex items-center gap-4 px-6 py-5 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-2xl transition-all group"
+        >
           <LogOut size={18} className="text-red-500 opacity-50 group-hover:opacity-100" />
           <span className="text-red-500 text-[10px] font-black uppercase tracking-[0.3em]">Desconectar</span>
         </button>
