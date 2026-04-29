@@ -9,7 +9,8 @@ import {
   BookOpen, 
   Activity, 
   UserPlus, 
-  BookMarked 
+  BookMarked,
+  Shield
 } from 'lucide-react'
 
 export default function DashboardPage() {
@@ -19,8 +20,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-10 animate-in fade-in duration-1000">
       
-      {/* ⚡ HEADER DINÁMICO: Cambia según el rol del nodo */}
-      <div className="bg-[#050505] border border-white/5 p-8 md:p-12 rounded-[3rem] relative overflow-hidden">
+      {/* ⚡ HEADER DINÁMICO CON INDICADOR DE NIVEL */}
+      <div className="bg-[#050505] border border-white/5 p-8 md:p-12 rounded-[3rem] relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-8">
         <div className="absolute top-0 right-0 w-80 h-80 bg-[#00E5FF]/5 blur-[120px] -mr-40 -mt-40 pointer-events-none" />
         
         <div className="relative z-10">
@@ -36,12 +37,27 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
+
+        {/* 🛡️ BADGE DE NIVEL DE ACCESO (RESTAURADO) */}
+        <div className="relative z-10 bg-white/5 border border-white/10 px-8 py-6 rounded-[2rem] flex items-center gap-4 backdrop-blur-md self-start md:self-center group hover:border-[#00E5FF]/30 transition-all">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all duration-500 ${
+            isAdmin ? 'bg-[#00E5FF]/10 border-[#00E5FF]/20 text-[#00E5FF]' : 'bg-purple-500/10 border-purple-500/20 text-purple-400'
+          }`}>
+            <Shield size={20} className={isAdmin ? 'animate-pulse' : ''} />
+          </div>
+          <div>
+            <p className="text-zinc-500 text-[8px] font-black uppercase tracking-widest">Nivel de Acceso</p>
+            <p className="text-white text-sm font-black uppercase tracking-tighter italic">
+              {isAdmin ? 'Admin' : 'Estudiante'}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* 📊 SECCIÓN CONDICIONAL: ADMIN VS ESTUDIANTE */}
+      {/* 📊 SECCIÓN DE MÉTRICAS */}
       {isAdmin ? (
         <>
-          {/* VISTA: ADMIN - MÉTRICAS DE ALTO NIVEL */}
+          {/* VISTA: ADMIN - MÉTRICAS GLOBALES[cite: 3] */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
               { label: 'Colaboradores Activos', value: '2', icon: Users, color: 'text-blue-400' },
@@ -57,9 +73,8 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* ⚡ VISTA: ADMIN - ACCIONES Y REGISTROS (RESTAURADO) */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* ACCIONES RÁPIDAS */}
+            {/* ACCIONES RÁPIDAS[cite: 3] */}
             <div className="space-y-6">
               <p className="text-zinc-600 text-[9px] font-black uppercase tracking-[0.3em] ml-4">Acciones</p>
               <div className="space-y-4">
@@ -84,7 +99,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* REGISTROS DE ACTIVIDAD (ANALÍTICA REESTABLECIDA)[cite: 3] */}
+            {/* REGISTROS DE ACTIVIDAD[cite: 3] */}
             <div className="lg:col-span-2 space-y-6">
               <div className="flex items-center justify-between ml-4">
                 <p className="text-zinc-600 text-[9px] font-black uppercase tracking-[0.3em]">Registros Recientes</p>
@@ -126,7 +141,7 @@ export default function DashboardPage() {
           </div>
         </>
       ) : (
-        /* 🎓 VISTA: ESTUDIANTE (PROGRESO PERSONAL)[cite: 3] */
+        /* 🎓 VISTA: ESTUDIANTE[cite: 3] */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem]">
