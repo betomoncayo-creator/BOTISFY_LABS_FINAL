@@ -2,176 +2,179 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
 import { 
-  Users, UserPlus, Trash2, Mail, Shield, 
-  X, Check, Copy, Zap, Key, Loader2, Search 
+  UserPlus, 
+  Search, 
+  Trash2, 
+  FileSpreadsheet, 
+  Mail,
+  ShieldCheck,
+  User as UserIcon,
+  X,
+  Key,
+  RefreshCcw,
+  Copy
 } from 'lucide-react'
-
-// Forzamos dinamismo en el cliente
-export const dynamic = 'force-dynamic'
+import BulkUploadModal from '@/components/BulkUploadModal'
 
 export default function UsuariosPage() {
-  const supabase = createClient()
-  const [users, setUsers] = useState<any[]>([])
+  const [usuarios, setUsuarios] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [isInviting, setIsInviting] = useState(false)
-  const [showInviteModal, setShowInviteModal] = useState(false)
-  const [generatedPassword, setGeneratedPassword] = useState('')
-  const [inviteForm, setInviteForm] = useState({ full_name: '', email: '', role: 'estudiante' })
+  
+  // Modales
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false)
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false)
+  
+  // Datos de usuario seleccionado
+  const [selectedUser, setSelectedUser] = useState<any>(null)
+  const [tempToken, setTempToken] = useState('')
 
-  const fetchUsers = useCallback(async () => {
+  // Registro Manual
+  const [newUserName, setNewUserName] = useState('')
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserRole, setNewUserRole] = useState('estudiante')
+
+  const supabase = createClient()
+
+  const fetchUsuarios = useCallback(async () => {
     setLoading(true)
-    try {
-      // Forzamos a la base de datos a responder sin caché
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false })
-      
-      if (!error) setUsers(data || [])
-    } finally {
-      setLoading(false)
-    }
+    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+    if (data) setUsuarios(data)
+    setLoading(false)
   }, [supabase])
 
-  useEffect(() => { fetchUsers() }, [fetchUsers])
+  useEffect(() => {
+    fetchUsuarios()
+  }, [fetchUsuarios])
 
-  const handleDeleteUser = async (id: string) => {
-    if(!confirm('¿Eliminar este acceso de forma permanente?')) return
+  // 🔑 GENERADOR DE PROTOCOLO DE ACCESO
+  const openKeyModal = (user: any) => {
+    setSelectedUser(user)
+    // Generamos un "Token" ficticio para el dashboard (o puedes usar la lógica de Supabase)
+    const randomToken = Math.random().toString(36).substring(2, 10).toUpperCase()
+    setTempToken(`BTF-${randomToken}-2026`)
+    setIsKeyModalOpen(true)
+  }
+
+  const handleResetProtocol = async () => {
+    if (!selectedUser) return
+    const { error } = await supabase.auth.resetPasswordForEmail(selectedUser.email, {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    })
     
-    const backup = [...users]
-    setUsers(prev => prev.filter(u => u.id !== id))
-
-    try {
-      const response = await fetch(`/api/users?id=${id}&t=${Date.now()}`, { 
-        method: 'DELETE',
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      })
-      
-      if (!response.ok) throw new Error('Error en servidor')
-      
-      // Confirmamos que se borró refrescando silenciosamente
-      fetchUsers()
-      
-    } catch (err: any) { 
-      setUsers(backup)
-      alert("Error: " + err.message) 
+    if (!error) {
+      alert("Enviado al correo del nodo.")
+      setIsKeyModalOpen(false)
     }
   }
 
-  const handleInviteSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsInviting(true)
-    const tempPass = "BTF-" + Math.random().toString(36).substring(2, 9).toUpperCase()
-
-    try {
-      const response = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...inviteForm, password: tempPass })
-      })
-      
-      if (!response.ok) throw new Error('Fallo al crear')
-      setGeneratedPassword(tempPass)
-      
-      // Delay para que Supabase propague el cambio
-      setTimeout(() => fetchUsers(), 1500)
-    } catch (err: any) { 
-      alert(err.message)
-      setIsInviting(false)
-    }
+  const deleteUsuario = async (id: string) => {
+    if (!confirm('¿Dar de baja?')) return
+    await supabase.from('profiles').delete().eq('id', id)
+    fetchUsuarios()
   }
 
-  const filteredUsers = users.filter(u => 
-    (u.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsuarios = usuarios.filter(user => 
+    user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Renderizado (El mismo diseño Cyberpunk que ya tienes)
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-10 animate-in fade-in duration-700">
-      {/* ... Tu diseño de Header, Tabla y Modales aquí ... */}
-      <div className="flex flex-col md:flex-row justify-between items-end gap-6 bg-[#050505] p-10 rounded-[3rem] border border-white/5 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00E5FF]/5 blur-[100px] pointer-events-none" />
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-4">
-            <Zap size={18} className="text-[#00E5FF] fill-current" />
-            <h1 className="text-4xl md:text-5xl font-black text-white italic uppercase tracking-tighter leading-none">
-              DIRECTORIO DE <span className="text-[#00E5FF]">USUARIOS</span>
+    <div className="space-y-8 animate-in fade-in duration-1000 font-sans">
+      
+      {/* HEADER DE GESTIÓN */}
+      <div className="bg-[#050505] border border-white/5 p-8 md:p-12 rounded-[3rem] relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-[#00E5FF]/5 blur-[120px] -mr-40 -mt-40" />
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 relative z-10">
+          <div className="space-y-2">
+            <h1 className="text-4xl md:text-5xl font-black italic text-white tracking-tighter uppercase">
+              <span className="text-[#00E5FF]">⚡</span> Directorio
             </h1>
+            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-[0.5em]">Gestión de Seguridad Botisfy Labs</p>
           </div>
-          <p className="text-zinc-500 text-[10px] font-black tracking-[0.5em] uppercase ml-1">GESTIÓN DE SEGURIDAD BOTISFY</p>
-        </div>
-        <div className="flex gap-4 w-full md:w-auto relative z-10">
-          <div className="relative flex-1 md:w-72">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
-            <input type="text" placeholder="BUSCAR..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl pl-14 pr-6 py-5 text-white text-[10px] font-bold uppercase tracking-widest focus:border-[#00E5FF] outline-none transition-all placeholder:text-zinc-700" />
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-[#00E5FF]" size={16} />
+              <input type="text" placeholder="BUSCAR..." className="bg-white/5 border border-white/10 rounded-2xl pl-12 pr-6 py-4 text-[10px] font-bold uppercase text-white outline-none focus:border-[#00E5FF]/30 transition-all w-64" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            </div>
+            <button onClick={() => setIsBulkModalOpen(true)} className="flex items-center gap-3 px-6 py-4 border border-[#00E5FF]/30 text-[#00E5FF] rounded-2xl text-[10px] font-black uppercase hover:bg-[#00E5FF]/10 transition-all active:scale-95"><FileSpreadsheet size={16} /> Carga Masiva</button>
+            <button onClick={() => setIsManualModalOpen(true)} className="flex items-center gap-3 px-8 py-4 bg-white text-black rounded-2xl text-[10px] font-black uppercase hover:shadow-[0_0_30px_rgba(255,255,255,0.2)] transition-all active:scale-95"><UserPlus size={16} /> Agregar</button>
           </div>
-          <button onClick={() => setShowInviteModal(true)} className="bg-white text-black hover:bg-[#00E5FF] px-10 py-5 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] transition-all flex items-center gap-3">
-             <UserPlus size={18} /> AGREGAR
-          </button>
         </div>
       </div>
 
-      <div className="bg-[#050505] border border-white/5 rounded-[3.5rem] overflow-hidden shadow-2xl">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-white/5 bg-white/[0.02]">
-              <th className="py-8 px-10 text-[9px] font-black text-zinc-600 tracking-[0.4em] uppercase italic">COLABORADOR</th>
-              <th className="py-8 px-10 text-[9px] font-black text-zinc-600 tracking-[0.4em] uppercase italic text-right">ACCIONES</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {loading && users.length === 0 ? (
-              <tr><td colSpan={2} className="py-20 text-center animate-pulse text-zinc-700 uppercase font-black text-[10px]">Cargando...</td></tr>
-            ) : filteredUsers.map((user) => (
-              <tr key={user.id} className="group hover:bg-white/[0.01]">
-                <td className="py-8 px-10">
-                  <div className="flex items-center gap-6">
-                    <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-lg font-black text-white italic">{user.full_name?.charAt(0)}</div>
-                    <div>
-                      <p className="text-sm font-black text-white uppercase italic tracking-tighter group-hover:text-[#00E5FF] transition-colors">{user.full_name}</p>
-                      <p className="text-[10px] text-zinc-600 font-bold uppercase italic">{user.email}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-8 px-10 text-right">
-                  <button onClick={() => handleDeleteUser(user.id)} className="p-4 text-zinc-700 hover:text-red-500 transition-all">
-                    <Trash2 size={20} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* MODAL DE INVITACIÓN (REPETIR TU DISEÑO ANTERIOR) */}
-      {showInviteModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-          <div className="bg-[#050505] border border-white/10 p-12 rounded-[3.5rem] w-full max-w-md text-center relative overflow-hidden">
-            <button onClick={() => { setShowInviteModal(false); setGeneratedPassword('') }} className="absolute top-10 right-10 text-zinc-700 hover:text-white"><X size={24} /></button>
-            {!generatedPassword ? (
-              <form onSubmit={handleInviteSubmit} className="space-y-6 text-left">
-                <h3 className="text-3xl font-black text-white italic uppercase tracking-tighter mb-8">INVITACIÓN</h3>
-                <input required type="text" placeholder="NOMBRE" value={inviteForm.full_name} onChange={e => setInviteForm({...inviteForm, full_name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white font-bold uppercase text-[11px]" />
-                <input required type="email" placeholder="EMAIL" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-5 text-white font-bold uppercase text-[11px]" />
-                <button type="submit" className="w-full bg-[#00E5FF] text-black font-black py-6 rounded-2xl uppercase text-[11px] tracking-[0.4em]">
-                  {isInviting ? <Loader2 className="animate-spin mx-auto" /> : 'GENERAR ACCESO'}
-                </button>
-              </form>
-            ) : (
-              <div className="space-y-8">
-                <div className="bg-white/5 border border-dashed border-white/20 p-10 rounded-[3rem] text-[#00E5FF] font-black text-4xl italic tracking-[0.3em]">{generatedPassword}</div>
-                <button onClick={() => { navigator.clipboard.writeText(`Email: ${inviteForm.email}\nPass: ${generatedPassword}`); alert("Copiado"); }} className="w-full py-6 rounded-2xl bg-white text-black font-black uppercase text-[11px]">COPIAR</button>
+      {/* LISTADO DE COLABORADORES */}
+      <div className="grid grid-cols-1 gap-4">
+        {loading ? (
+          <div className="py-20 text-center"><div className="w-10 h-10 border-2 border-[#00E5FF] border-t-transparent rounded-full animate-spin mx-auto" /></div>
+        ) : filteredUsuarios.map((user) => (
+          <div key={user.id} className="group bg-[#050505] border border-white/5 p-6 rounded-[2rem] flex items-center justify-between hover:border-[#00E5FF]/20 transition-all duration-500">
+            <div className="flex items-center gap-6">
+              <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 group-hover:border-[#00E5FF]/30 transition-colors">
+                <span className="text-white font-black text-xl italic group-hover:text-[#00E5FF]">{user.full_name?.[0]}</span>
               </div>
-            )}
+              <div className="space-y-1">
+                <h3 className="text-white font-black uppercase italic tracking-tight text-sm flex items-center gap-2">{user.full_name} {user.role === 'admin' && <ShieldCheck size={14} className="text-[#00E5FF]" />}</h3>
+                <p className="text-zinc-500 text-[10px] font-bold flex items-center gap-2"><Mail size={12}/> {user.email} <span className="text-[#00E5FF]/60 ml-2">Nivel: {user.role}</span></p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => openKeyModal(user)} className="p-3 text-zinc-600 hover:text-[#00E5FF] hover:bg-[#00E5FF]/5 rounded-xl transition-all"><Key size={18} /></button>
+              <button onClick={() => deleteUsuario(user.id)} className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all"><Trash2 size={18} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 🛡️ MODAL DE SEGURIDAD (TOKEN LLAVE) */}
+      {isKeyModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in fade-in duration-300">
+          <div className="bg-[#080808] border border-[#00E5FF]/20 w-full max-w-md rounded-[3rem] p-10 relative shadow-[0_0_50px_rgba(0,229,255,0.1)]">
+            <button onClick={() => setIsKeyModalOpen(false)} className="absolute top-8 right-8 text-zinc-500 hover:text-white transition-colors"><X /></button>
+            
+            <div className="flex flex-col items-center mb-8">
+              <div className="w-16 h-16 bg-[#00E5FF]/10 rounded-2xl flex items-center justify-center mb-4 border border-[#00E5FF]/20">
+                <Key className="text-[#00E5FF]" size={32} />
+              </div>
+              <h2 className="text-white text-2xl font-black uppercase italic tracking-tighter">Protocolo de Acceso</h2>
+              <p className="text-zinc-500 text-[8px] font-bold uppercase tracking-[0.4em] mt-2">Usuario: {selectedUser?.full_name}</p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center group">
+                <p className="text-zinc-500 text-[8px] font-bold uppercase tracking-[0.3em] mb-3">Token de Seguridad Temporal</p>
+                <code className="text-[#00E5FF] text-xl font-black tracking-[0.2em]">{tempToken}</code>
+                <div className="flex justify-center gap-4 mt-6">
+                  <button onClick={() => navigator.clipboard.writeText(tempToken)} className="p-3 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all"><Copy size={16}/></button>
+                  <button onClick={() => openKeyModal(selectedUser)} className="p-3 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all"><RefreshCcw size={16}/></button>
+                </div>
+              </div>
+              
+              <button onClick={handleResetProtocol} className="w-full py-5 bg-[#00E5FF] text-black font-black uppercase text-[10px] tracking-[0.3em] rounded-2xl shadow-lg shadow-[#00E5FF]/20 active:scale-95 transition-all">
+                Enviar Link de Reseteo
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* OTROS MODALES (Manual y Bulk) */}
+      {isManualModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-md bg-black/80">
+          <div className="bg-[#080808] border border-white/10 w-full max-w-md rounded-[3rem] p-10 relative">
+            <button onClick={() => setIsManualModalOpen(false)} className="absolute top-8 right-8 text-zinc-500 hover:text-white"><X /></button>
+            <h2 className="text-white text-2xl font-black uppercase italic mb-8">Nuevo Acceso</h2>
+            <form onSubmit={(e) => { e.preventDefault(); /* Tu lógica manual aquí */ setIsManualModalOpen(false); fetchUsuarios(); }} className="space-y-6">
+              <input type="text" placeholder="NOMBRE COMPLETO" className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white text-[10px] font-bold outline-none focus:border-[#00E5FF]/50" required />
+              <input type="email" placeholder="EMAIL" className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white text-[10px] font-bold outline-none focus:border-[#00E5FF]/50" required />
+              <button type="submit" className="w-full py-5 bg-white text-black font-black uppercase text-[10px] tracking-widest rounded-2xl">Sincronizar</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isBulkModalOpen && <BulkUploadModal onClose={() => setIsBulkModalOpen(false)} onSuccess={() => { setIsBulkModalOpen(false); fetchUsuarios(); }} />}
     </div>
   )
 }
