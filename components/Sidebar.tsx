@@ -23,10 +23,9 @@ export default function Sidebar() {
     router.push('/login')
   }
 
-  // 🛡️ FILTRADO DE SEGURIDAD POR ROL
+  // 🛡️ REGLA DE SEGURIDAD: Solo el Admin ve el Directorio
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-    // El Directorio solo es visible para el Administrador[cite: 2]
     ...(profile?.role === 'admin' ? [{ name: 'Directorio', icon: Users, path: '/dashboard/usuarios' }] : []),
     { name: 'Academia', icon: BookOpen, path: '/dashboard/academia' },
     { name: 'Configuración', icon: Settings, path: '/dashboard/settings' },
@@ -34,7 +33,6 @@ export default function Sidebar() {
 
   return (
     <aside className="w-full h-full flex flex-col p-8 bg-[#050505] overflow-hidden">
-      {/* BRANDING OFICIAL */}
       <div className="flex items-center gap-4 mb-16 px-2">
         <img src="/logo-botisfy.png" alt="Botisfy Labs" className="w-10 h-10 object-contain" />
         <div className="truncate">
@@ -43,7 +41,6 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* NAVEGACIÓN DINÁMICA */}
       <nav className="flex-1 space-y-3">
         {menuItems.map((item) => {
           const isActive = pathname === item.path
@@ -59,12 +56,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* SALIDA DE SEGURIDAD */}
       <div className="mt-auto pt-8 border-t border-white/5">
-        <button 
-          onClick={handleLogout}
-          className="w-full flex items-center gap-4 px-6 py-5 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-2xl transition-all group"
-        >
+        <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-5 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-2xl transition-all group">
           <LogOut size={18} className="text-red-500 opacity-50 group-hover:opacity-100" />
           <span className="text-red-500 text-[10px] font-black uppercase tracking-[0.3em]">Desconectar</span>
         </button>
