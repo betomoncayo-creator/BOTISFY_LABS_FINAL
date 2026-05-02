@@ -4,9 +4,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { 
   ChevronLeft, Video, FileCode, FileText, HelpCircle, 
-  Plus, Save, Trash2, Award, Eye, Image as ImageIcon,
-  CheckCircle2, Link as LinkIcon, ArrowUp, ArrowDown, 
-  UploadCloud, RefreshCw, X, Play 
+  Save, Trash2, CheckCircle2, Link as LinkIcon, 
+  ArrowUp, ArrowDown, UploadCloud, RefreshCw, Eye
 } from 'lucide-react'
 
 export default function CourseEditorPage() {
@@ -30,7 +29,7 @@ export default function CourseEditorPage() {
     fontColor: '#ffffff'
   })
 
-  // 🛰️ SINCRONIZACIÓN INICIAL (Resuelve el problema del F5)
+  // 🛰️ SINCRONIZACIÓN INICIAL (F5 Proof)
   useEffect(() => {
     const fetchCourseData = async () => {
       setLoading(true)
@@ -60,7 +59,7 @@ export default function CourseEditorPage() {
     const newMod = {
       id: Date.now(),
       type,
-      title: `NODO ${type.toUpperCase()}`,
+      title: `NUEVO NODO ${type.toUpperCase()}`,
       content: '',
       videoSource: 'url'
     }
@@ -82,18 +81,24 @@ export default function CourseEditorPage() {
     setModules(newModules)
   }
 
-  const handleVideoUpload = async (e: any) => {
+  // ☁️ CARGA DE ARCHIVOS CON RESTRICCIONES DE SEGURIDAD
+  const handleFileUpload = async (e: any) => {
     const file = e.target.files[0]
     if (!file) return
+
     setUploading(true)
     setUploadProgress(0)
+
     const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`
     const { data, error } = await supabase.storage.from('course_materials').upload(fileName, file, {
         onUploadProgress: (p) => setUploadProgress(Math.round((p.loaded / p.total) * 100)),
     })
+
     if (!error) {
       const { data: { publicUrl } } = supabase.storage.from('course_materials').getPublicUrl(fileName)
       updateModule('content', publicUrl)
+    } else {
+      alert(`Error de inyección: ${error.message}`)
     }
     setUploading(false)
   }
@@ -104,32 +109,32 @@ export default function CourseEditorPage() {
       .from('courses')
       .update({ modules, certificate_config: certSettings, updated_at: new Date().toISOString() })
       .eq('id', id)
-    if (!error) alert("✅ DESPLIEGUE EXITOSO: Nodos sincronizados con la Red Neural.")
+    if (!error) alert("✅ DESPLIEGUE EXITOSO: La estructura de nodos ha sido actualizada en la red.")
     setIsSaving(false)
   }
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 text-[#00E5FF]">
       <RefreshCw className="animate-spin" size={32} />
-      <p className="text-[10px] font-black uppercase tracking-[0.5em]">Sincronizando Red...</p>
+      <p className="text-[10px] font-black uppercase tracking-[0.5em]">Sincronizando Nodos...</p>
     </div>
   )
 
   return (
     <div className="w-full space-y-8 animate-in fade-in duration-500 pb-20 text-white">
+      {/* HEADER DE CONTROL */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-white/5 pb-8">
         <div className="flex items-center gap-6">
           <button onClick={() => router.back()} className="p-3 bg-white/5 hover:bg-white/10 rounded-xl text-zinc-400 border border-white/5 transition-all"><ChevronLeft size={20} /></button>
           <div>
             <h1 className="text-2xl md:text-4xl font-black italic uppercase tracking-tighter leading-none">Gestión de <span className="text-[#00E5FF]">Contenidos</span></h1>
-            <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-[0.3em] mt-2 italic">ID: {id} • Botisfy Academy</p>
+            <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-[0.3em] mt-2 italic">Neural Engine • ID: {id}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setActiveTab('modulos')} className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'modulos' ? 'bg-white/10 text-white border border-white/20' : 'text-zinc-500 hover:text-white'}`}>Nodos</button>
           <button onClick={() => setActiveTab('certificado')} className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeTab === 'certificado' ? 'bg-[#00E5FF]/20 text-[#00E5FF] border border-[#00E5FF]/30' : 'text-zinc-500 hover:text-white'}`}>Certificado</button>
-          <div className="w-[1px] h-8 bg-white/10 mx-2" />
-          <button onClick={handlePublish} disabled={isSaving} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] tracking-widest uppercase flex items-center gap-2 hover:scale-105 transition-all">
+          <button onClick={handlePublish} disabled={isSaving} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] tracking-widest uppercase flex items-center gap-2 hover:scale-105 transition-all ml-4">
             {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
             {isSaving ? 'Guardando...' : 'Publicar'}
           </button>
@@ -138,15 +143,18 @@ export default function CourseEditorPage() {
 
       {activeTab === 'modulos' ? (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
-          {/* MALLA DE APRENDIZAJE */}
+          {/* COLUMNA IZQUIERDA: LISTA DE NODOS */}
           <div className="xl:col-span-4 space-y-6">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-600 ml-4">Secuencia Neural</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-600 ml-4">Malla de Aprendizaje</h3>
             <div className="space-y-3">
               {modules.map((mod, index) => (
-                <div key={mod.id} onClick={() => setSelectedModId(mod.id)} className={`p-5 rounded-2xl flex items-center justify-between group transition-all cursor-pointer border ${selectedModId === mod.id ? 'bg-white/5 border-[#00E5FF]/40 shadow-[0_0_20px_rgba(0,229,255,0.05)]' : 'bg-[#050505] border-white/5 hover:border-white/10'}`}>
+                <div key={mod.id} onClick={() => setSelectedModId(mod.id)} className={`p-5 rounded-2xl flex items-center justify-between group transition-all cursor-pointer border ${selectedModId === mod.id ? 'bg-white/5 border-[#00E5FF]/40' : 'bg-[#050505] border-white/5 hover:border-white/10'}`}>
                   <div className="flex items-center gap-4">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${selectedModId === mod.id ? 'text-[#00E5FF] border-[#00E5FF]/20' : 'text-zinc-600 border-white/5'}`}>
-                      {mod.type === 'video' ? <Video size={18} /> : <FileCode size={18} />}
+                      {mod.type === 'video' && <Video size={18} />}
+                      {mod.type === 'embed' && <FileCode size={18} />}
+                      {mod.type === 'pdf' && <FileText size={18} />}
+                      {mod.type === 'quiz' && <HelpCircle size={18} />}
                     </div>
                     <p className={`text-[11px] font-black uppercase tracking-tight ${selectedModId === mod.id ? 'text-white' : 'text-zinc-500'}`}>{mod.title}</p>
                   </div>
@@ -168,13 +176,16 @@ export default function CourseEditorPage() {
             </div>
           </div>
 
-          {/* EDITOR ACTIVO */}
+          {/* COLUMNA DERECHA: EDITOR INTERACTIVO */}
           <div className="xl:col-span-8">
             {selectedModule ? (
               <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem] space-y-8 animate-in slide-in-from-right-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-[#00E5FF]/10 rounded-2xl flex items-center justify-center text-[#00E5FF]">
-                    {selectedModule.type === 'video' ? <Video size={24} /> : <FileCode size={24} />}
+                    {selectedModule.type === 'video' && <Video size={24} />}
+                    {selectedModule.type === 'pdf' && <FileText size={24} />}
+                    {selectedModule.type === 'embed' && <FileCode size={24} />}
+                    {selectedModule.type === 'quiz' && <HelpCircle size={24} />}
                   </div>
                   <h2 className="text-white text-xl font-black italic uppercase tracking-tighter">Nodo: {selectedModule.type}</h2>
                 </div>
@@ -182,45 +193,32 @@ export default function CourseEditorPage() {
                 <div className="space-y-6">
                   <input type="text" value={selectedModule.title} onChange={(e) => updateModule('title', e.target.value)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white text-xs font-bold outline-none focus:border-[#00E5FF]/40" />
                   
+                  {/* EDITOR VIDEO */}
                   {selectedModule.type === 'video' && (
                     <div className="space-y-8">
                       <div className="flex gap-2 p-1 bg-white/5 rounded-xl w-fit">
-                        <button onClick={() => updateModule('videoSource', 'url')} className={`px-4 py-2 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${selectedModule.videoSource === 'url' ? 'bg-[#00E5FF] text-black' : 'text-zinc-500'}`}>Link Externo</button>
+                        <button onClick={() => updateModule('videoSource', 'url')} className={`px-4 py-2 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${selectedModule.videoSource === 'url' ? 'bg-[#00E5FF] text-black' : 'text-zinc-500'}`}>Link</button>
                         <button onClick={() => updateModule('videoSource', 'file')} className={`px-4 py-2 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${selectedModule.videoSource === 'file' ? 'bg-[#00E5FF] text-black' : 'text-zinc-500'}`}>Cargar Archivo</button>
                       </div>
-
-                      {/* 🎬 PREVIEW DEL VIDEO */}
                       {selectedModule.content && (
-                        <div className="space-y-3">
-                          <p className="text-zinc-600 text-[8px] font-black uppercase tracking-widest ml-4 flex items-center gap-2"><Play size={10} /> Preview del Material</p>
-                          <div className="bg-black rounded-3xl overflow-hidden border border-white/10 aspect-video relative">
-                             {selectedModule.content.includes('youtube.com') || selectedModule.content.includes('youtu.be') ? (
-                               <iframe className="w-full h-full" src={selectedModule.content.replace('watch?v=', 'embed/')} />
-                             ) : (
-                               <video controls className="w-full h-full" key={selectedModule.content}>
-                                 <source src={selectedModule.content} type="video/mp4" />
-                               </video>
-                             )}
-                          </div>
+                        <div className="bg-black rounded-3xl overflow-hidden border border-white/10 aspect-video relative">
+                          {selectedModule.content.includes('youtube.com') || selectedModule.content.includes('youtu.be') ? (
+                            <iframe className="w-full h-full" src={selectedModule.content.replace('watch?v=', 'embed/')} />
+                          ) : (
+                            <video controls className="w-full h-full" key={selectedModule.content}><source src={selectedModule.content} /></video>
+                          )}
                         </div>
                       )}
-
                       {selectedModule.videoSource === 'url' ? (
-                        <input type="text" placeholder="https://youtube.com/..." value={selectedModule.content} onChange={(e) => updateModule('content', e.target.value)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white text-xs font-mono outline-none" />
+                        <input type="text" placeholder="https://..." value={selectedModule.content} onChange={(e) => updateModule('content', e.target.value)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white text-xs font-mono outline-none" />
                       ) : (
                         <div className="relative group">
-                          {/* 🖱️ DROPZONE FUNCIONAL */}
-                          <input type="file" accept="video/*" onChange={handleVideoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                          <div className="w-full bg-white/5 border-2 border-dashed border-white/10 p-12 rounded-[3rem] flex flex-col items-center justify-center gap-4 group-hover:border-[#00E5FF]/20 group-hover:bg-[#00E5FF]/5 transition-all text-center">
+                          <input type="file" accept="video/mp4,video/webm" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                          <div className="w-full bg-white/5 border-2 border-dashed border-white/10 p-12 rounded-[3rem] flex flex-col items-center justify-center gap-4 group-hover:border-[#00E5FF]/20 transition-all text-center">
                             {uploading ? (
-                              <><RefreshCw className="text-[#00E5FF] animate-spin" size={32} /><div className="w-full max-w-xs bg-white/5 h-1.5 rounded-full mt-4 overflow-hidden"><div className="bg-[#00E5FF] h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} /></div><p className="text-[#00E5FF] text-[8px] font-black uppercase tracking-widest">{uploadProgress}% Inyectado</p></>
+                              <><RefreshCw className="text-[#00E5FF] animate-spin" size={32} /><div className="w-full max-w-xs bg-white/5 h-1.5 rounded-full mt-4 overflow-hidden"><div className="bg-[#00E5FF] h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} /></div></>
                             ) : (
-                              <><UploadCloud className="text-zinc-700 group-hover:text-[#00E5FF] transition-colors" size={40} />
-                                <div className="space-y-1">
-                                  <p className="text-zinc-300 text-[10px] font-black uppercase tracking-widest">Arrastra el video o haz clic</p>
-                                  <p className="text-zinc-600 text-[8px] font-bold uppercase">Formatos soportados: MP4, MOV, WEBM (Max 500MB)</p>
-                                </div>
-                              </>
+                              <><UploadCloud className="text-zinc-700 group-hover:text-[#00E5FF]" size={40} /><p className="text-zinc-500 text-[9px] font-black uppercase">Arrastra o selecciona Video</p></>
                             )}
                           </div>
                         </div>
@@ -228,6 +226,40 @@ export default function CourseEditorPage() {
                     </div>
                   )}
 
+                  {/* 📂 EDITOR PDF CON PREVIEW INLINE */}
+                  {selectedModule.type === 'pdf' && (
+                    <div className="space-y-6">
+                      {selectedModule.content && (
+                        <div className="space-y-4 animate-in slide-in-from-bottom-2">
+                          <div className="flex items-center justify-between px-4">
+                             <p className="text-zinc-600 text-[8px] font-black uppercase tracking-widest flex items-center gap-2"><Eye size={10} /> Visor de Documento</p>
+                             <span className="text-[9px] font-bold text-[#00E5FF] uppercase truncate max-w-[200px]">{selectedModule.content.split('/').pop()}</span>
+                          </div>
+                          {/* 🖼️ VISOR NATIVO INCRUSTADO */}
+                          <div className="bg-white/5 rounded-[2rem] overflow-hidden border border-white/10 h-[600px] w-full relative shadow-2xl">
+                             <iframe 
+                               src={`${selectedModule.content}#toolbar=0`} 
+                               className="w-full h-full border-none"
+                               title="PDF Inline Preview"
+                             />
+                          </div>
+                        </div>
+                      )}
+                      <div className="relative group">
+                        {/* RESTRICCIÓN ESTRICTA DE FORMATO */}
+                        <input type="file" accept="application/pdf" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                        <div className="w-full bg-white/5 border-2 border-dashed border-white/10 p-12 rounded-[3rem] flex flex-col items-center justify-center gap-4 group-hover:border-[#00E5FF]/20 transition-all text-center">
+                          {uploading ? (
+                            <><RefreshCw className="text-[#00E5FF] animate-spin" size={32} /><p className="text-[#00E5FF] text-[8px] font-black uppercase tracking-widest">{uploadProgress}% Inyectado</p></>
+                          ) : (
+                            <><UploadCloud className="text-zinc-700 group-hover:text-[#00E5FF]" size={40} /><p className="text-zinc-500 text-[9px] font-black uppercase">Arrastra o selecciona el PDF</p></>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* EDITOR EMBED */}
                   {selectedModule.type === 'embed' && (
                     <div className="space-y-6">
                       <textarea rows={6} placeholder="<iframe... />" value={selectedModule.content} onChange={(e) => updateModule('content', e.target.value)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-[#00E5FF] text-xs font-mono outline-none resize-none" />
@@ -238,7 +270,7 @@ export default function CourseEditorPage() {
                   )}
                 </div>
               </div>
-            ) : <div className="h-full flex items-center justify-center text-zinc-700 text-[10px] font-black uppercase tracking-[0.4em]">Selecciona un nodo</div>}
+            ) : <div className="h-full flex items-center justify-center text-zinc-700 text-[10px] font-black uppercase tracking-[0.4em]">Selecciona un nodo neural</div>}
           </div>
         </div>
       ) : (
