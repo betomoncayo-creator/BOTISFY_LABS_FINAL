@@ -1,19 +1,55 @@
 'use client'
-import { useContext } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { UserContext } from '@/lib/context'
+import { createClient } from '@/lib/supabase'
 import { 
   Users, Zap, Clock, Award, BookOpen, Activity, 
-  UserPlus, BookMarked, Shield 
+  UserPlus, BookMarked, Shield, RefreshCw 
 } from 'lucide-react'
 
 export default function DashboardPage() {
   const { profile } = useContext(UserContext)
-  const isAdmin = profile?.role === 'admin'
+  const [stats, setStats] = useState({ activeUsers: 0, loading: true })
+  const [recentLogs, setRecentLogs] = useState([])
+  const supabase = createClient()
+  
+  const userRole = profile?.role?.toLowerCase().trim() || 'estudiante'
+  const isAdmin = userRole === 'admin'
+
+  // 🔄 SINCRONIZACIÓN DE NODOS EN TIEMPO REAL
+  useEffect(() => {
+    async function fetchDashboardData() {
+      if (!isAdmin) return; // El estudiante no necesita esta carga
+
+      // 1. Conteo real de colaboradores
+      const { count } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+      
+      // 2. Fetch de registros reales (últimos perfiles actualizados)
+      const { data: logs } = await supabase
+        .from('profiles')
+        .select('full_name, role, updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(3)
+
+      setStats({ activeUsers: count || 0, loading: false })
+      setRecentLogs(logs || [])
+    }
+
+    fetchDashboardData()
+  }, [isAdmin, supabase])
+
+  // 🛠️ HANDLER: Invitar Colaborador
+  const handleInvite = () => {
+    // Aquí puedes disparar un modal o redirigir al directorio
+    window.location.href = '/dashboard/usuarios'
+  }
 
   return (
     <div className="space-y-10 animate-in fade-in duration-1000">
       
-      {/* ⚡ HEADER DINÁMICO CON BLINDAJE DE ROL */}
+      {/* ⚡ HEADER DINÁMICO */}
       <div className="bg-[#050505] border border-white/5 p-8 md:p-12 rounded-[3rem] relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-8">
         <div className="absolute top-0 right-0 w-80 h-80 bg-[#00E5FF]/5 blur-[120px] -mr-40 -mt-40 pointer-events-none" />
         
@@ -29,7 +65,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 🛡️ BADGE DE NIVEL DE ACCESO DINÁMICO */}
         <div className="relative z-10 bg-white/5 border border-white/10 px-8 py-6 rounded-[2rem] flex items-center gap-4 backdrop-blur-md self-start md:self-center">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
             isAdmin ? 'bg-[#00E5FF]/10 border-[#00E5FF]/20 text-[#00E5FF]' : 'bg-purple-500/10 border-purple-500/20 text-purple-400'
@@ -45,13 +80,19 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 📊 SECCIÓN DE MÉTRICAS SEGÚN ROL[cite: 4] */}
       {isAdmin ? (
         <>
-          {/* VISTA ADMINISTRADOR: ANALÍTICA Y GESTIÓN[cite: 4] */}
+          {/* VISTA ADMINISTRADOR: MÉTRICAS REALES */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-[#050505] border border-white/5 p-8 rounded-[2.5rem]">
+              <Users className="text-blue-400 mb-6 opacity-40" size={20} />
+              <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest mb-2">Colaboradores Activos</p>
+              <p className="text-white text-3xl font-black italic tracking-tighter">
+                {stats.loading ? <RefreshCw className="animate-spin" size={20} /> : stats.activeUsers}
+              </p>
+            </div>
+            {/* Las demás métricas se dinamizarán cuando integremos el módulo de cursos */}
             {[
-              { label: 'Colaboradores Activos', value: '2', icon: Users, color: 'text-blue-400' },
               { label: 'Tasa de Finalización', value: '85%', icon: Zap, color: 'text-purple-400' },
               { label: 'Horas Capacitación', value: '124', icon: Clock, color: 'text-yellow-400' },
               { label: 'Certificados Emitidos', value: '12', icon: Award, color: 'text-green-400' },
@@ -65,18 +106,26 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* ACCIONES REALES */}
             <div className="space-y-6">
               <p className="text-zinc-600 text-[9px] font-black uppercase tracking-[0.3em] ml-4">Acciones</p>
               <div className="space-y-4">
-                <button className="w-full bg-[#050505] border border-white/5 p-6 rounded-3xl flex items-center gap-6 group hover:border-[#00E5FF]/30 transition-all text-left">
-                  <div className="w-12 h-12 bg-[#00E5FF]/10 rounded-2xl flex items-center justify-center text-[#00E5FF]"><UserPlus size={20} /></div>
+                <button 
+                  onClick={handleInvite}
+                  className="w-full bg-[#050505] border border-white/5 p-6 rounded-3xl flex items-center gap-6 group hover:border-[#00E5FF]/30 transition-all text-left"
+                >
+                  <div className="w-12 h-12 bg-[#00E5FF]/10 rounded-2xl flex items-center justify-center text-[#00E5FF] group-hover:scale-110 transition-transform">
+                    <UserPlus size={20} />
+                  </div>
                   <div>
                     <p className="text-white text-[11px] font-black uppercase tracking-widest">Invitar Colaborador</p>
                     <p className="text-zinc-600 text-[9px] font-bold uppercase mt-1">Añadir nuevo acceso</p>
                   </div>
                 </button>
-                <button className="w-full bg-[#050505] border border-white/5 p-6 rounded-3xl flex items-center gap-6 group hover:border-[#00E5FF]/30 transition-all text-left">
-                  <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center text-purple-400"><BookMarked size={20} /></div>
+                <button className="w-full bg-[#050505] border border-white/5 p-6 rounded-3xl flex items-center gap-6 group hover:border-purple-500/30 transition-all text-left">
+                  <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
+                    <BookMarked size={20} />
+                  </div>
                   <div>
                     <p className="text-white text-[11px] font-black uppercase tracking-widest">Asignar Capacitación</p>
                     <p className="text-zinc-600 text-[9px] font-bold uppercase mt-1">Gestionar módulos</p>
@@ -85,6 +134,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* REGISTROS RECIENTES: DESDE LA BASE[cite: 4] */}
             <div className="lg:col-span-2 space-y-6">
               <p className="text-zinc-600 text-[9px] font-black uppercase tracking-[0.3em] ml-4">Registros Recientes</p>
               <div className="bg-[#050505] border border-white/5 rounded-[2.5rem] overflow-hidden">
@@ -92,22 +142,32 @@ export default function DashboardPage() {
                   <thead>
                     <tr className="border-b border-white/5">
                       <th className="p-6 text-zinc-700 text-[8px] font-black uppercase tracking-widest">Colaborador</th>
-                      <th className="p-6 text-zinc-700 text-[8px] font-black uppercase tracking-widest text-right">Última Acción</th>
+                      <th className="p-6 text-zinc-700 text-[8px] font-black uppercase tracking-widest text-right">Última Actividad</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.02]">
-                    {[
-                      { name: 'Freddy Moncayo', role: 'Admin', action: 'Acceso al Sistema' },
-                      { name: 'Jenny', role: 'Estudiante', action: 'Completó Módulo IA' }
-                    ].map((reg, i) => (
+                    {recentLogs.length > 0 ? recentLogs.map((reg, i) => (
                       <tr key={i} className="hover:bg-white/[0.01] transition-colors group">
                         <td className="p-6 flex items-center gap-4">
-                          <div className="w-8 h-8 bg-white/5 rounded-xl flex items-center justify-center text-[10px] font-black text-zinc-500">{reg.name[0]}</div>
-                          <div><p className="text-white text-[10px] font-black uppercase tracking-tight">{reg.name}</p></div>
+                          <div className="w-8 h-8 bg-white/5 rounded-xl flex items-center justify-center text-[10px] font-black text-zinc-500 border border-white/5 group-hover:border-[#00E5FF]/20 transition-all">
+                            {reg.full_name?.[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-white text-[10px] font-black uppercase tracking-tight">{reg.full_name}</p>
+                            <p className="text-zinc-600 text-[8px] font-bold uppercase">{reg.role}</p>
+                          </div>
                         </td>
-                        <td className="p-6 text-right"><span className="text-zinc-500 text-[9px] font-black uppercase tracking-widest">{reg.action}</span></td>
+                        <td className="p-6 text-right">
+                          <span className="text-zinc-500 text-[9px] font-black uppercase tracking-widest">
+                            {new Date(reg.updated_at).toLocaleDateString()}
+                          </span>
+                        </td>
                       </tr>
-                    ))}
+                    )) : (
+                      <tr>
+                        <td colSpan={2} className="p-10 text-center text-zinc-600 text-[9px] uppercase font-bold tracking-widest">No hay registros aún</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -115,7 +175,7 @@ export default function DashboardPage() {
           </div>
         </>
       ) : (
-        /* 🎓 VISTA ESTUDIANTE: FOCO EN APRENDIZAJE[cite: 4] */
+        /* 🎓 VISTA ESTUDIANTE (Mantenida intacta)[cite: 4] */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem]">
