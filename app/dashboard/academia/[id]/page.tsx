@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import html2canvas from 'html2canvas'
+import { jsPDF } from 'jspdf' // 🚀 El nuevo motor de renderizado PDF
 import { 
   ChevronLeft, Video, FileCode, FileText, HelpCircle, 
   Save, Trash2, CheckCircle2, ArrowUp, ArrowDown, 
@@ -28,10 +28,13 @@ export default function CourseEditorPage() {
   const [simulationResult, setSimulationResult] = useState<{score: number, passed: boolean} | null>(null)
   const [modules, setModules] = useState<any[]>([])
 
+  // 📄 ESTADO PARA LA VISTA PREVIA DEL PDF
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null)
+
   const [certSettings, setCertSettings] = useState<any>({
     bgImage: null,
     elements: {
-      name: { top: 45, left: 50, fontSize: 40, color: '#FFFFFF', visible: true, label: 'Nombre Estudiante' },
+      name: { top: 45, left: 50, fontSize: 40, color: '#000000', visible: true, label: 'Nombre Estudiante' },
       course: { top: 60, left: 50, fontSize: 25, color: '#00E5FF', visible: true, label: 'Nombre del Curso' },
       date: { top: 80, left: 50, fontSize: 12, color: '#94a3b8', visible: true, label: 'Fecha de Emisión' }
     }
@@ -55,54 +58,87 @@ export default function CourseEditorPage() {
   const selectedModule = modules.find(m => m.id === selectedModId)
   const currentIndex = modules.findIndex(m => m.id === selectedModId)
 
-  // 🛠️ MOTOR DE DESCARGA: FIX DE RECORTE Y DATOS[cite: 3]
-  const downloadCertificate = async () => {
-    if (!containerRef.current) return;
-    setIsSaving(true);
-    
-    try {
-      // 1. Truco vital: Forzar scroll a (0,0) para evitar que html2canvas recorte la imagen
-      const originalScrollY = window.scrollY;
-      const originalScrollX = window.scrollX;
-      window.scrollTo(0, 0);
+  // =========================================================================
+  // 🛠️ MOTOR DE GENERACIÓN PDF (NUEVA ARQUITECTURA)
+  // =========================================================================
+  const generatePDFDocument = async () => {
+    // Dimensiones estándar A4 Landscape en pixeles de alta resolución
+    const pdfWidth = 1920; 
+    const pdfHeight = 1358;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: [pdfWidth, pdfHeight] });
 
-      // 2. Pequeña pausa para asegurar que el DOM redibujó el scroll
-      await new Promise(resolve => setTimeout(resolve, 300));
-
-      const canvas = await html2canvas(containerRef.current, {
-        useCORS: true,
-        scale: 2, // 2x es más estable y mantiene excelente calidad
-        backgroundColor: '#ffffff', // Fondo blanco forzado para evitar transparencias
-        x: 0,
-        y: 0,
-        scrollX: 0,
-        scrollY: 0,
-        logging: false,
-        onclone: (clonedDoc) => {
-          const el = clonedDoc.getElementById('cert-capture-area');
-          if (el) {
-            el.style.borderRadius = '0px';
-            el.style.boxShadow = 'none';
-            el.style.transform = 'none';
-          }
-        }
+    // 1. Incrustar Imagen de Fondo
+    if (certSettings.bgImage) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = certSettings.bgImage;
+      
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
       });
+      
+      doc.addImage(img, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    }
 
-      // 3. Restaurar el scroll donde estaba el usuario
-      window.scrollTo(originalScrollX, originalScrollY);
+    // 2. Procesar e inyectar Textos Nativos
+    Object.entries(certSettings.elements).forEach(([key, el]: [string, any]) => {
+      if (el.visible) {
+        // Cálculo matemático exacto basado en el porcentaje que ajustaste en el editor
+        const xPos = (el.left / 100) * pdfWidth;
+        const yPos = (el.top / 100) * pdfHeight;
+        
+        // Escalar la fuente del editor al tamaño gigante del PDF (factor de escala ~2.4)
+        doc.setFontSize(el.fontSize * 2.4);
+        doc.setTextColor(el.color);
+        doc.setFont("helvetica", "bolditalic"); // Fuente PDF estándar robusta
+        
+        let textValue = '';
+        if (key === 'name') textValue = 'Freddy Moncayo';
+        else if (key === 'course') textValue = 'Automatización con IA 101';
+        else textValue = '03 de Mayo, 2026';
 
-      const image = canvas.toDataURL("image/png", 1.0);
-      const link = document.createElement('a');
-      link.download = `Certificado-Botisfy-${id}.png`;
-      link.href = image;
-      link.click();
-      setIsSaving(false);
+        // Imprimir texto con anclaje central
+        doc.text(textValue, xPos, yPos, { align: 'center', baseline: 'middle' });
+      }
+    });
+
+    return doc;
+  };
+
+  // 👁️ VISTA PREVIA PDF
+  const loadPDFPreview = async () => {
+    try {
+      const doc = await generatePDFDocument();
+      const pdfBlob = doc.output('blob');
+      const url = URL.createObjectURL(pdfBlob);
+      setPdfPreviewUrl(url);
     } catch (error) {
-      console.error("Error en renderizado:", error);
-      alert("Hubo un error al generar la imagen. Intenta nuevamente.");
+      console.error("Error generando preview PDF:", error);
+    }
+  };
+
+  // 💾 DESCARGAR PDF
+  const downloadPDF = async () => {
+    setIsSaving(true);
+    try {
+      const doc = await generatePDFDocument();
+      doc.save(`Certificado-Botisfy-${id}.pdf`);
+    } catch (error) {
+      alert("Error al descargar el documento.");
+    } finally {
       setIsSaving(false);
     }
   };
+
+  // Efecto para cargar la vista previa automáticamente cuando el estudiante desbloquea el certificado
+  useEffect(() => {
+    if (isStudentMode && isUnlocked && activeTab === 'certificado') {
+      loadPDFPreview();
+    }
+  }, [isStudentMode, isUnlocked, activeTab, certSettings]);
+
+  // =========================================================================
 
   const updateModule = (field: string, value: any) => {
     if (isStudentMode) return
@@ -155,6 +191,7 @@ export default function CourseEditorPage() {
     objectiveQs.forEach((q: any) => {
       const sel = userAnswers[q.id] || []; 
       const cor = q.type === 'boolean' ? [q.correctAnswer] : (q.correctAnswers || [])
+      if (cor.length === 0) return;
       const aciertos = sel.filter(a => cor.includes(a)).length
       const errores = sel.filter(a => !cor.includes(a)).length
       totalScore += Math.max(0, (aciertos - errores) / cor.length) * puntosPorPregunta
@@ -163,7 +200,6 @@ export default function CourseEditorPage() {
     setSimulationResult({ score: Math.round(totalScore), passed }); if (passed) setIsUnlocked(true)
   }
 
-  // 🛠️ DRAG & DROP GLOBAL[cite: 3]
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!draggingId || !containerRef.current || isStudentMode) return
     const rect = containerRef.current.getBoundingClientRect()
@@ -197,9 +233,7 @@ export default function CourseEditorPage() {
       onMouseLeave={() => setDraggingId(null)}
       onMouseMove={handleMouseMove}
     >
-      {/* EL DRAG & DROP AHORA SE ESCUCHA EN TODA LA PÁGINA PARA QUE NO SE ATASQUE */}
-      
-      {/* HEADER */}
+      {/* HEADER DE CONTROL */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-white/5 pb-8">
         <div className="flex items-center gap-6">
           <button onClick={() => router.back()} className="p-3 bg-white/5 rounded-xl border border-white/5"><ChevronLeft size={20} /></button>
@@ -310,7 +344,7 @@ export default function CourseEditorPage() {
                     {selectedModule.type === 'quiz' && (
                       <div className="space-y-8 mt-6">
                         {!isStudentMode ? (
-                          /* EDITOR QUIZ CON FIX VISUAL DE PREGUNTA ABIERTA */
+                          /* EDITOR QUIZ */
                           <div className="space-y-6">
                              <div className="grid grid-cols-2 gap-4 bg-white/5 p-6 rounded-2xl border border-white/10">
                               <div className="space-y-2"><label className="text-[8px] font-black text-zinc-600 uppercase">Puntaje Máximo</label><input type="number" value={selectedModule.totalPoints} onChange={(e) => updateModule('totalPoints', Number(e.target.value))} className="w-full bg-black/50 p-3 rounded-xl text-[#00E5FF] font-bold" /></div>
@@ -399,8 +433,10 @@ export default function CourseEditorPage() {
           </div>
         </div>
       ) : (
-        /* VISTA CERTIFICADO CON DOWNLOAD PERFECTO */
+        /* VISTA CERTIFICADO (MALLA PDF NATIVA) */
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10 animate-in zoom-in-95 duration-500">
+          
+          {/* EDITOR HTML INTERACTIVO (SOLO ADMIN) */}
           {!isStudentMode && (
             <div className="xl:col-span-4 space-y-6">
               <div className="bg-[#050505] p-8 rounded-[2.5rem] border border-white/5 space-y-8">
@@ -410,7 +446,7 @@ export default function CourseEditorPage() {
                   <div key={key} className="space-y-3 p-4 bg-white/[0.02] rounded-xl border border-white/5">
                     <div className="flex justify-between items-center"><span className="text-[9px] font-black uppercase text-zinc-400">{certSettings.elements[key].label}</span><Palette size={12} className="text-zinc-600"/></div>
                     <input type="color" value={certSettings.elements[key].color} onChange={(e) => updateCertElement(key, 'color', e.target.value)} className="w-full h-6 bg-transparent border-0 cursor-pointer" />
-                    <div className="space-y-1"><p className="text-[7px] font-bold text-zinc-600 uppercase">Escala</p><input type="range" min="8" max="120" value={certSettings.elements[key].fontSize} onChange={(e) => updateCertElement(key, 'fontSize', Number(e.target.value))} className="w-full accent-[#00E5FF]" /></div>
+                    <div className="space-y-1"><p className="text-[7px] font-bold text-zinc-600 uppercase">Escala (PDF)</p><input type="range" min="8" max="120" value={certSettings.elements[key].fontSize} onChange={(e) => updateCertElement(key, 'fontSize', Number(e.target.value))} className="w-full accent-[#00E5FF]" /></div>
                   </div>
                 ))}
               </div>
@@ -418,32 +454,50 @@ export default function CourseEditorPage() {
           )}
 
           <div className={`${isStudentMode ? 'xl:col-span-12' : 'xl:col-span-8'} flex flex-col items-center gap-10`}>
+             
+             {/* PANTALLA DE BLOQUEO PARA ESTUDIANTE NO APROBADO */}
              {isStudentMode && !isUnlocked ? (
                 <div className="bg-[#050505] border border-red-500/20 p-20 rounded-[3rem] text-center space-y-6 max-w-2xl"><div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500 shadow-[0_0_30px_rgba(239,68,68,0.1)]"><Lock size={40}/></div><h2 className="text-3xl font-black uppercase italic tracking-tighter">Certificado Bloqueado</h2><p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Acredita tu conocimiento en la evaluación final para liberar tu diploma oficial.</p></div>
              ) : (
-               <div className="w-full flex flex-col items-center gap-10">
-                  {/* ÁREA DE CAPTURA - ID FIJO Y Z-INDEX SEGUROS */}
-                  <div 
-                    id="cert-capture-area"
-                    ref={containerRef} 
-                    className="relative w-full max-w-4xl aspect-[1.414/1] bg-white shadow-[0_40px_100px_rgba(0,0,0,0.5)] overflow-hidden border border-white/10 select-none"
-                  >
-                     {certSettings.bgImage ? <img src={certSettings.bgImage} crossOrigin="anonymous" className="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="Cert" /> : <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none"><img src="/logo-botisfy.png" className="w-96" alt="" /></div>}
-                     <div className="absolute inset-0 z-20">
+               <div className="w-full flex flex-col items-center gap-6">
+                  
+                  {/* VISUALIZADOR MODO ADMIN (HTML ARRASTRABLE) */}
+                  {!isStudentMode ? (
+                    <div ref={containerRef} className="relative w-full max-w-4xl aspect-[1.414/1] bg-white shadow-[0_40px_100px_rgba(0,0,0,0.5)] overflow-hidden border border-white/10 select-none rounded-[1.5rem]">
+                       {certSettings.bgImage ? <img src={certSettings.bgImage} crossOrigin="anonymous" className="absolute inset-0 w-full h-full object-cover pointer-events-none" alt="Cert" /> : <div className="absolute inset-0 flex items-center justify-center opacity-5 pointer-events-none"><img src="/logo-botisfy.png" className="w-96" alt="" /></div>}
+                       
                        {Object.entries(certSettings.elements).map(([key, el]: [string, any]) => el.visible && (
                          <div 
                           key={key} 
-                          onMouseDown={() => !isStudentMode && setDraggingId(key)} 
+                          onMouseDown={() => setDraggingId(key)} 
                           style={{ 
-                            position: 'absolute', top: `${el.top}%`, left: `${el.left}%`, fontSize: `${el.fontSize}px`, color: el.color, transform: 'translate(-50%, -50%)', whiteSpace: 'nowrap', fontWeight: '900', textTransform: 'uppercase', fontStyle: 'italic', cursor: isStudentMode ? 'default' : 'grab', zIndex: 30, visibility: 'visible', opacity: 1
+                            position: 'absolute', top: `${el.top}%`, left: `${el.left}%`, 
+                            // Escala visual adaptada para el editor
+                            fontSize: `${el.fontSize}px`, 
+                            color: el.color, transform: 'translate(-50%, -50%)', whiteSpace: 'nowrap', fontWeight: '900', textTransform: 'uppercase', fontStyle: 'italic', cursor: 'grab', zIndex: 50
                           }}
                          >
                            {key === 'name' ? 'Freddy Moncayo' : key === 'course' ? 'Automatización con IA 101' : '03 de Mayo, 2026'}
                          </div>
                        ))}
-                     </div>
-                  </div>
-                  {isStudentMode && <button onClick={downloadCertificate} disabled={isSaving} className="bg-[#00E5FF] text-black px-12 py-5 rounded-2xl font-black text-xs uppercase shadow-[0_0_40px_rgba(0,229,255,0.3)] hover:scale-105 transition-all flex items-center gap-3 active:scale-95">{isSaving ? <RefreshCw className="animate-spin" size={18}/> : <Download size={18}/>} {isSaving ? 'Capturando HD...' : 'Descargar Diploma Oficial'}</button>}
+                    </div>
+                  ) : (
+                    /* VISUALIZADOR MODO ESTUDIANTE (PDF GENERADO REAL) */
+                    <div className="w-full flex flex-col items-center gap-6">
+                      {pdfPreviewUrl ? (
+                         <iframe src={`${pdfPreviewUrl}#toolbar=0`} className="w-full max-w-4xl aspect-[1.414/1] rounded-3xl border border-white/10 shadow-2xl bg-white" />
+                      ) : (
+                         <div className="w-full max-w-4xl aspect-[1.414/1] flex items-center justify-center border border-white/10 rounded-3xl bg-white/5 animate-pulse">
+                            <RefreshCw className="animate-spin text-[#00E5FF] mb-4" size={40} />
+                         </div>
+                      )}
+                      <button onClick={downloadPDF} disabled={isSaving} className="bg-[#00E5FF] text-black px-12 py-5 rounded-2xl font-black text-xs uppercase shadow-[0_0_40px_rgba(0,229,255,0.3)] hover:scale-105 transition-all flex items-center gap-3 active:scale-95">
+                        {isSaving ? <RefreshCw className="animate-spin" size={18}/> : <Download size={18}/>} 
+                        {isSaving ? 'Descargando...' : 'Descargar PDF Oficial'}
+                      </button>
+                    </div>
+                  )}
+
                </div>
              )}
           </div>
