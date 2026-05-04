@@ -22,7 +22,6 @@ export default function CourseEditorPage() {
   const [selectedModId, setSelectedModId] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
   
-  // 🛰️ ESTADOS DE CONTROL DE ACCESO Y LOGRO
   const [isStudentMode, setIsStudentMode] = useState(false)
   const [isUnlocked, setIsUnlocked] = useState(false) 
   const [userAnswers, setUserAnswers] = useState<Record<number, string[]>>({}) 
@@ -56,7 +55,55 @@ export default function CourseEditorPage() {
   const selectedModule = modules.find(m => m.id === selectedModId)
   const currentIndex = modules.findIndex(m => m.id === selectedModId)
 
-  // 🛠️ FUNCIONES DE GESTIÓN (ADMIN ONLY)
+  // 🛠️ MOTOR DE DESCARGA: FIX DE RECORTE Y DATOS[cite: 3]
+  const downloadCertificate = async () => {
+    if (!containerRef.current) return;
+    setIsSaving(true);
+    
+    try {
+      // 1. Truco vital: Forzar scroll a (0,0) para evitar que html2canvas recorte la imagen
+      const originalScrollY = window.scrollY;
+      const originalScrollX = window.scrollX;
+      window.scrollTo(0, 0);
+
+      // 2. Pequeña pausa para asegurar que el DOM redibujó el scroll
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      const canvas = await html2canvas(containerRef.current, {
+        useCORS: true,
+        scale: 2, // 2x es más estable y mantiene excelente calidad
+        backgroundColor: '#ffffff', // Fondo blanco forzado para evitar transparencias
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0,
+        logging: false,
+        onclone: (clonedDoc) => {
+          const el = clonedDoc.getElementById('cert-capture-area');
+          if (el) {
+            el.style.borderRadius = '0px';
+            el.style.boxShadow = 'none';
+            el.style.transform = 'none';
+          }
+        }
+      });
+
+      // 3. Restaurar el scroll donde estaba el usuario
+      window.scrollTo(originalScrollX, originalScrollY);
+
+      const image = canvas.toDataURL("image/png", 1.0);
+      const link = document.createElement('a');
+      link.download = `Certificado-Botisfy-${id}.png`;
+      link.href = image;
+      link.click();
+      setIsSaving(false);
+    } catch (error) {
+      console.error("Error en renderizado:", error);
+      alert("Hubo un error al generar la imagen. Intenta nuevamente.");
+      setIsSaving(false);
+    }
+  };
+
   const updateModule = (field: string, value: any) => {
     if (isStudentMode) return
     setModules(modules.map(m => m.id === selectedModId ? { ...m, [field]: value } : m))
@@ -64,8 +111,7 @@ export default function CourseEditorPage() {
 
   const addModule = (type: string) => {
     const newMod: any = {
-      id: Date.now(), type, title: `NUEVO NODO ${type.toUpperCase()}`, content: '', videoSource: 'url', 
-      questions: type === 'quiz' ? [] : undefined, passingScore: 7, totalPoints: 10
+      id: Date.now(), type, title: `NUEVO NODO ${type.toUpperCase()}`, content: '', videoSource: 'url', questions: type === 'quiz' ? [] : undefined, passingScore: 7, totalPoints: 10
     }
     setModules([...modules, newMod]); setSelectedModId(newMod.id);
   }
@@ -84,7 +130,6 @@ export default function CourseEditorPage() {
     setModules(newModules)
   }
 
-  // 🧠 LÓGICA DE QUIZ (ESTUDIANTE)[cite: 2]
   const addQuestion = (type: 'multiple' | 'boolean' | 'open') => {
     const newQ = { 
       id: Date.now(), type, text: 'Nueva Pregunta', 
@@ -118,29 +163,7 @@ export default function CourseEditorPage() {
     setSimulationResult({ score: Math.round(totalScore), passed }); if (passed) setIsUnlocked(true)
   }
 
-  // 📐 MOTOR DE CERTIFICADO[cite: 2]
-  const downloadCertificate = async () => {
-    if (!containerRef.current) return;
-    setIsSaving(true);
-    try {
-      const canvas = await html2canvas(containerRef.current, {
-        useCORS: true,
-        scale: 3, 
-        backgroundColor: null,
-        logging: false,
-        onclone: (clonedDoc) => {
-          const el = clonedDoc.getElementById('cert-area');
-          if (el) el.style.borderRadius = '0px';
-        }
-      });
-      const link = document.createElement('a');
-      link.download = `Certificado-Botisfy-${id}.png`;
-      link.href = canvas.toDataURL("image/png", 1.0);
-      link.click();
-      setIsSaving(false);
-    } catch (e) { setIsSaving(false); }
-  }
-
+  // 🛠️ DRAG & DROP GLOBAL[cite: 3]
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!draggingId || !containerRef.current || isStudentMode) return
     const rect = containerRef.current.getBoundingClientRect()
@@ -168,31 +191,35 @@ export default function CourseEditorPage() {
   if (loading) return <div className="flex items-center justify-center min-h-screen text-[#00E5FF]"><RefreshCw className="animate-spin" /></div>
 
   return (
-    <div className="w-full space-y-8 pb-20 text-white animate-in fade-in" onMouseUp={() => setDraggingId(null)}>
-      {/* HEADER DE CONTROL */}
+    <div 
+      className="w-full space-y-8 pb-20 text-white animate-in fade-in" 
+      onMouseUp={() => setDraggingId(null)} 
+      onMouseLeave={() => setDraggingId(null)}
+      onMouseMove={handleMouseMove}
+    >
+      {/* EL DRAG & DROP AHORA SE ESCUCHA EN TODA LA PÁGINA PARA QUE NO SE ATASQUE */}
+      
+      {/* HEADER */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-white/5 pb-8">
         <div className="flex items-center gap-6">
           <button onClick={() => router.back()} className="p-3 bg-white/5 rounded-xl border border-white/5"><ChevronLeft size={20} /></button>
           <h1 className="text-2xl md:text-4xl font-black italic uppercase tracking-tighter">Gestión de <span className="text-[#00E5FF]">Contenidos</span></h1>
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => { setIsStudentMode(!isStudentMode); setActiveTab('modulos'); setSimulationResult(null); }}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${isStudentMode ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-zinc-500'}`}
-          >
+          <button onClick={() => { setIsStudentMode(!isStudentMode); setActiveTab('modulos'); setSimulationResult(null); }} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${isStudentMode ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-zinc-500'}`}>
             {isStudentMode ? <Edit3 size={14}/> : <User size={14}/>} {isStudentMode ? 'Volver al Editor' : 'Modo Estudiante'}
           </button>
           <button onClick={() => setActiveTab('modulos')} className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest ${activeTab === 'modulos' ? 'bg-white/10' : 'text-zinc-500'}`}>Nodos</button>
           <button onClick={() => { if (!isStudentMode || isUnlocked) setActiveTab('certificado'); }} className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${activeTab === 'certificado' ? 'bg-[#00E5FF]/20 text-[#00E5FF]' : (isStudentMode && !isUnlocked ? 'text-zinc-800 cursor-not-allowed' : 'text-zinc-500')}`}>
             {isStudentMode && !isUnlocked ? <Lock size={12}/> : null} Certificado
           </button>
-          {!isStudentMode && <button onClick={() => supabase.from('courses').update({ modules, certificate_config: certSettings }).eq('id', id).then(() => alert("✅ SINCRONIZADO"))} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase flex items-center gap-2"><Save size={16} /> Publicar</button>}
+          {!isStudentMode && <button onClick={() => supabase.from('courses').update({ modules, certificate_config: certSettings }).eq('id', id).then(() => alert("✅ SINCRONIZADO"))} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase flex items-center gap-2 shadow-[0_0_20px_rgba(0,229,255,0.2)]"><Save size={16} /> Publicar</button>}
         </div>
       </div>
 
       {activeTab === 'modulos' ? (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
-          {/* SIDEBAR DE NODOS[cite: 2] */}
+          {/* SIDEBAR DE NODOS */}
           <div className="xl:col-span-4 space-y-4">
              <h3 className="text-[10px] font-black uppercase text-zinc-600 ml-4 tracking-[0.3em]">Red de Aprendizaje</h3>
              {modules.map((mod, index) => (
@@ -223,7 +250,6 @@ export default function CourseEditorPage() {
             )}
           </div>
 
-          {/* EDITOR / VISOR[cite: 2] */}
           <div className="xl:col-span-8">
             {selectedModule ? (
               <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem] space-y-8 animate-in slide-in-from-right-4 duration-500">
@@ -231,7 +257,7 @@ export default function CourseEditorPage() {
                 <input type="text" value={selectedModule.title} onChange={(e) => updateModule('title', e.target.value)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white text-xs font-bold outline-none" />}
 
                 <div className="min-h-[400px]">
-                  {/* EDITORES ADMIN[cite: 2] */}
+                  {/* EDITORES ADMIN */}
                   {!isStudentMode && (
                     <div className="space-y-6">
                       {selectedModule.type === 'video' && (
@@ -241,11 +267,14 @@ export default function CourseEditorPage() {
                              <button onClick={() => updateModule('videoSource', 'file')} className={`px-4 py-2 rounded-lg text-[8px] font-black uppercase ${selectedModule.videoSource === 'file' ? 'bg-[#00E5FF] text-black' : 'text-zinc-500'}`}>Archivo Local</button>
                            </div>
                            {selectedModule.videoSource === 'url' ? (
-                             <input type="text" placeholder="URL de video..." value={selectedModule.content} onChange={(e) => updateModule('content', e.target.value)} className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs" />
+                             <input type="text" placeholder="URL de YouTube..." value={selectedModule.content} onChange={(e) => updateModule('content', e.target.value)} className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs" />
                            ) : (
                              <div className="relative group">
                                <input type="file" accept="video/*" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                               <div className="w-full bg-white/5 border-2 border-dashed border-white/10 p-10 rounded-2xl text-center group-hover:border-[#00E5FF]/40 transition-all"><UploadCloud className="mx-auto mb-2 text-zinc-700" size={30} /><p className="text-zinc-500 text-[8px] font-black uppercase">Subir MP4</p></div>
+                               <div className="w-full bg-white/5 border-2 border-dashed border-white/10 p-10 rounded-2xl text-center group-hover:border-[#00E5FF]/40 transition-all">
+                                 <UploadCloud className="mx-auto mb-2 text-zinc-700" size={30} />
+                                 <p className="text-zinc-500 text-[8px] font-black uppercase">Subir Video (MP4)</p>
+                               </div>
                              </div>
                            )}
                         </div>
@@ -253,67 +282,82 @@ export default function CourseEditorPage() {
                       {selectedModule.type === 'pdf' && (
                         <div className="relative group">
                           <input type="file" accept="application/pdf" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-                          <div className="w-full bg-white/5 border-2 border-dashed border-white/10 p-10 rounded-2xl text-center group-hover:border-[#00E5FF]/40 transition-all"><FileText className="mx-auto mb-2 text-zinc-700" size={30} /><p className="text-zinc-500 text-[8px] font-black uppercase">Cargar PDF</p></div>
+                          <div className="w-full bg-white/5 border-2 border-dashed border-white/10 p-10 rounded-2xl text-center group-hover:border-[#00E5FF]/40 transition-all">
+                             <FileText className="mx-auto mb-2 text-zinc-700" size={30} />
+                             <p className="text-zinc-500 text-[8px] font-black uppercase">Cargar Nuevo PDF Instructivo</p>
+                          </div>
                         </div>
                       )}
                       {selectedModule.type === 'embed' && (
-                         <textarea rows={6} placeholder="Pega el iframe aquí..." value={selectedModule.content} onChange={(e) => updateModule('content', e.target.value)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-[#00E5FF] text-xs font-mono outline-none resize-none" />
+                        <div className="space-y-2">
+                           <label className="text-zinc-600 text-[8px] font-black uppercase ml-2">Código de Inserción (Iframe)</label>
+                           <textarea rows={6} placeholder="<iframe>...</iframe>" value={selectedModule.content} onChange={(e) => updateModule('content', e.target.value)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-[#00E5FF] text-xs font-mono outline-none resize-none" />
+                        </div>
                       )}
                     </div>
                   )}
 
-                  {/* VISUALIZADORES DINÁMICOS[cite: 2] */}
-                  <div className={!isStudentMode ? "mt-10" : ""}>
+                  {/* VISUALIZADORES DINÁMICOS */}
+                  <div className={!isStudentMode && selectedModule.type !== 'quiz' ? "mt-10" : ""}>
                     {selectedModule.type === 'video' && selectedModule.content && (
                       <div className="bg-black rounded-3xl overflow-hidden aspect-video shadow-2xl">
                         {selectedModule.content.includes('youtube') ? <iframe className="w-full h-full" src={selectedModule.content.replace('watch?v=', 'embed/')} /> : <video controls className="w-full h-full" key={selectedModule.content}><source src={selectedModule.content}/></video>}
                       </div>
                     )}
-                    {selectedModule.type === 'pdf' && selectedModule.content && <iframe src={`${selectedModule.content}#toolbar=0`} className="w-full h-[600px] rounded-3xl border border-white/10" />}
-                    {selectedModule.type === 'embed' && selectedModule.content && <div className="bg-black rounded-3xl overflow-hidden aspect-video shadow-2xl border border-white/5"><div className="w-full h-full" dangerouslySetInnerHTML={{ __html: selectedModule.content }} /></div>}
+                    {selectedModule.type === 'pdf' && selectedModule.content && <iframe src={`${selectedModule.content}#toolbar=0`} className="w-full h-[600px] rounded-3xl border border-white/10 shadow-2xl" />}
+                    {selectedModule.type === 'embed' && selectedModule.content && <div className="bg-black rounded-3xl overflow-hidden aspect-video border border-white/5 shadow-2xl"><div className="w-full h-full" dangerouslySetInnerHTML={{ __html: selectedModule.content }} /></div>}
                     
                     {selectedModule.type === 'quiz' && (
-                      <div className="space-y-8">
+                      <div className="space-y-8 mt-6">
                         {!isStudentMode ? (
-                          /* EDITOR QUIZ RESTAURADO[cite: 2] */
+                          /* EDITOR QUIZ CON FIX VISUAL DE PREGUNTA ABIERTA */
                           <div className="space-y-6">
                              <div className="grid grid-cols-2 gap-4 bg-white/5 p-6 rounded-2xl border border-white/10">
-                              <div className="space-y-2"><label className="text-[8px] font-black text-zinc-600 uppercase">Máximo</label><input type="number" value={selectedModule.totalPoints} onChange={(e) => updateModule('totalPoints', Number(e.target.value))} className="w-full bg-black/50 p-3 rounded-xl text-[#00E5FF] font-bold" /></div>
-                              <div className="space-y-2"><label className="text-[8px] font-black text-zinc-600 uppercase">Mínimo</label><input type="number" value={selectedModule.passingScore} onChange={(e) => updateModule('passingScore', Number(e.target.value))} className="w-full bg-black/50 p-3 rounded-xl text-[#00E5FF] font-bold" /></div>
+                              <div className="space-y-2"><label className="text-[8px] font-black text-zinc-600 uppercase">Puntaje Máximo</label><input type="number" value={selectedModule.totalPoints} onChange={(e) => updateModule('totalPoints', Number(e.target.value))} className="w-full bg-black/50 p-3 rounded-xl text-[#00E5FF] font-bold" /></div>
+                              <div className="space-y-2"><label className="text-[8px] font-black text-zinc-600 uppercase">Mínimo para Aprobar</label><input type="number" value={selectedModule.passingScore} onChange={(e) => updateModule('passingScore', Number(e.target.value))} className="w-full bg-black/50 p-3 rounded-xl text-[#00E5FF] font-bold" /></div>
                             </div>
                             {selectedModule.questions?.map((q: any, idx: number) => (
                               <div key={q.id} className="bg-white/5 p-6 rounded-2xl border border-white/5 space-y-4">
-                                <div className="flex justify-between text-[10px] font-black text-zinc-600 uppercase"><span>Pregunta {idx+1} — {q.type}</span><button onClick={() => updateModule('questions', selectedModule.questions.filter((_,i)=>i!==idx))} className="text-red-500"><Trash2 size={14}/></button></div>
-                                <input value={q.text} onChange={(e) => { const nq = [...selectedModule.questions]; nq[idx].text = e.target.value; updateModule('questions', nq); }} className="w-full bg-transparent border-b border-white/10 py-2 text-white outline-none font-bold" placeholder="Escribe la pregunta..." />
-                                {q.type !== 'open' && (
+                                <div className="flex justify-between text-[10px] font-black text-zinc-600 uppercase"><span>Pregunta {idx+1} — {q.type === 'open' ? 'ABIERTA' : q.type}</span><button onClick={() => updateModule('questions', selectedModule.questions.filter((_,i)=>i!==idx))} className="text-red-500"><Trash2 size={14}/></button></div>
+                                <input value={q.text} onChange={(e) => { const nq = [...selectedModule.questions]; nq[idx].text = e.target.value; updateModule('questions', nq); }} className="w-full bg-transparent border-b border-white/10 py-2 text-white outline-none font-bold" placeholder="Escribe la consigna..." />
+                                
+                                {q.type !== 'open' ? (
                                   <div className="grid grid-cols-2 gap-3 mt-4">
-                                    {q.options.map((o:string, i:number) => (
-                                      <div key={i} className="relative">
-                                        <input value={o} onChange={(e) => { const nq = [...selectedModule.questions]; nq[idx].options[i] = e.target.value; updateModule('questions', nq); }} className={`w-full p-3 rounded-xl text-[10px] border bg-[#050505] transition-all ${(q.type === 'boolean' ? q.correctAnswer === o : (q.correctAnswers || []).includes(o)) ? 'border-[#00E5FF] text-[#00E5FF]' : 'border-white/5 text-zinc-500'}`} />
-                                        <button onClick={() => { 
-                                          const nq = [...selectedModule.questions]; if (q.type === 'boolean') nq[idx].correctAnswer = o;
-                                          else { const cur = nq[idx].correctAnswers || []; nq[idx].correctAnswers = cur.includes(o) ? cur.filter((a:any)=>a!==o) : [...cur, o]; }
-                                          updateModule('questions', nq);
-                                        }} className="absolute right-3 top-3 text-zinc-800 hover:text-[#00E5FF]"><CheckCircle2 size={14}/></button>
-                                      </div>
-                                    ))}
+                                    {q.options.map((o:string, i:number) => {
+                                      const isCor = q.type === 'boolean' ? q.correctAnswer === o : (q.correctAnswers || []).includes(o);
+                                      return (
+                                        <div key={i} className="relative">
+                                          <input value={o} onChange={(e) => { const nq = [...selectedModule.questions]; nq[idx].options[i] = e.target.value; updateModule('questions', nq); }} className={`w-full p-3 rounded-xl text-[10px] border bg-[#050505] transition-all ${isCor ? 'border-[#00E5FF] text-[#00E5FF]' : 'border-white/5 text-zinc-500'}`} />
+                                          <button onClick={() => { 
+                                            const nq = [...selectedModule.questions]; if (q.type === 'boolean') nq[idx].correctAnswer = o;
+                                            else { const cur = nq[idx].correctAnswers || []; nq[idx].correctAnswers = cur.includes(o) ? cur.filter((a:any)=>a!==o) : [...cur, o]; }
+                                            updateModule('questions', nq);
+                                          }} className="absolute right-3 top-3 text-zinc-800 hover:text-[#00E5FF]"><CheckCircle2 size={14}/></button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="mt-4">
+                                    <textarea disabled className="w-full bg-black/20 border border-white/5 p-4 rounded-xl text-zinc-600 text-[10px] font-bold italic resize-none" placeholder="El estudiante verá un área de texto libre aquí para responder..." />
                                   </div>
                                 )}
                               </div>
                             ))}
                             <div className="flex gap-4 justify-center">
-                              <button onClick={() => addQuestion('multiple')} className="text-[8px] font-black uppercase bg-white/5 px-4 py-2 rounded-lg hover:text-[#00E5FF] transition-all">+ Múltiple</button>
+                              <button onClick={() => addQuestion('multiple')} className="text-[8px] font-black uppercase bg-white/5 px-4 py-2 rounded-lg hover:text-[#00E5FF] transition-all">+ Opción Múltiple</button>
                               <button onClick={() => addQuestion('boolean')} className="text-[8px] font-black uppercase bg-white/5 px-4 py-2 rounded-lg hover:text-[#00E5FF] transition-all">+ V / F</button>
                               <button onClick={() => addQuestion('open')} className="text-[8px] font-black uppercase bg-white/5 px-4 py-2 rounded-lg hover:text-[#00E5FF] transition-all">+ Abierta</button>
                             </div>
                           </div>
                         ) : (
-                          /* VISTA ESTUDIANTE QUIZ[cite: 2] */
+                          /* VISTA ESTUDIANTE QUIZ */
                           <div className="space-y-8 bg-white/[0.01] p-10 rounded-[2rem] border border-white/5">
                             {simulationResult ? (
                               <div className={`p-8 rounded-3xl text-center border animate-in zoom-in-95 ${simulationResult.passed ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
-                                 <p className="text-5xl font-black italic tracking-tighter">{simulationResult.score} / {selectedModule.totalPoints}</p>
-                                 <button onClick={() => {setSimulationResult(null); setUserAnswers({});}} className="mt-8 px-8 py-2 bg-white/5 border border-white/10 rounded-xl text-[8px] font-black uppercase">Reiniciar Red Neural</button>
+                                 <p className="text-5xl font-black italic">{simulationResult.score} / {selectedModule.totalPoints}</p>
+                                 <p className={`text-[10px] font-black uppercase mt-3 ${simulationResult.passed ? 'text-green-500' : 'text-red-500'}`}>{simulationResult.passed ? '✅ LOGRO OBTENIDO - CERTIFICADO LIBERADO' : '❌ NO ALCANZA EL MÍNIMO'}</p>
+                                 <button onClick={() => {setSimulationResult(null); setUserAnswers({});}} className="mt-8 px-8 py-2 bg-white/5 border border-white/10 rounded-xl text-[8px] font-black uppercase hover:bg-white/10">Reiniciar Evaluación</button>
                               </div>
                             ) : (
                               <>
@@ -324,9 +368,9 @@ export default function CourseEditorPage() {
                                       <div className="flex items-center gap-4"><div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#00E5FF]/10 text-[#00E5FF] font-black text-xs">{idx + 1}</div><p className="text-lg font-bold">{q.text}</p></div>
                                       <div className="grid grid-cols-1 gap-3 ml-10">
                                         {q.type === 'open' ? (
-                                          <textarea value={userAnswers[q.id]?.[0] || ''} onChange={(e) => setUserAnswers({...userAnswers, [q.id]: [e.target.value]})} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl outline-none text-zinc-400 italic" placeholder="Respuesta cualitativa..." />
+                                          <textarea value={userAnswers[q.id]?.[0] || ''} onChange={(e) => setUserAnswers({...userAnswers, [q.id]: [e.target.value]})} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl outline-none text-white focus:border-[#00E5FF]/50 transition-all" placeholder="Escribe tu respuesta cualitativa..." />
                                         ) : q.options.map((opt: string, i: number) => (
-                                          <button key={i} onClick={() => toggleAnswer(q.id, opt, q.type === 'multiple')} className={`p-5 rounded-2xl border text-left text-[11px] font-bold transition-all flex items-center justify-between ${isSel(opt) ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF]' : 'bg-white/5 border-white/5 text-zinc-500'}`}>
+                                          <button key={i} onClick={() => toggleAnswer(q.id, opt, q.type === 'multiple')} className={`p-5 rounded-2xl border text-left text-[11px] font-bold transition-all flex items-center justify-between ${isSel(opt) ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF]' : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'}`}>
                                             {opt} {q.type === 'multiple' && (isSel(opt) ? <CheckSquare size={16}/> : <Square size={16} className="opacity-20"/>)}
                                           </button>
                                         ))}
@@ -334,7 +378,7 @@ export default function CourseEditorPage() {
                                     </div>
                                   );
                                 })}
-                                <button onClick={runSimulation} className="w-full bg-[#00E5FF] text-black py-6 rounded-3xl font-black text-xs uppercase shadow-[0_0_40px_rgba(0,229,255,0.2)] hover:scale-[1.01] transition-all">Finalizar Evaluación Neural</button>
+                                <button onClick={runSimulation} className="w-full bg-[#00E5FF] text-black py-6 rounded-3xl font-black text-xs uppercase tracking-[0.3em] shadow-[0_0_40px_rgba(0,229,255,0.2)] hover:scale-[1.01] transition-all">Finalizar Evaluación Neural</button>
                               </>
                             )}
                           </div>
@@ -344,19 +388,19 @@ export default function CourseEditorPage() {
                   </div>
                 </div>
 
-                {/* NAVEGACIÓN SECUENCIAL[cite: 2] */}
+                {/* NAVEGACIÓN SECUENCIAL */}
                 <div className="flex items-center justify-between border-t border-white/5 pt-8 mt-10">
-                  <button onClick={() => { if(currentIndex>0) setSelectedModId(modules[currentIndex-1].id); }} disabled={currentIndex===0} className={`flex items-center gap-2 px-8 py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${currentIndex===0?'opacity-20':'bg-white/5 text-white hover:bg-white/10'}`}><ChevronLeft size={16}/> Anterior</button>
+                  <button onClick={() => { if(currentIndex>0) setSelectedModId(modules[currentIndex-1].id); }} disabled={currentIndex===0} className={`flex items-center gap-2 px-8 py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${currentIndex===0?'opacity-20 cursor-not-allowed':'bg-white/5 text-white hover:bg-white/10'}`}><ChevronLeft size={16}/> Anterior</button>
                   <p className="text-zinc-600 text-[8px] font-black uppercase tracking-[0.5em]">Nodo {currentIndex+1} de {modules.length}</p>
-                  <button onClick={() => { if(currentIndex<modules.length-1) setSelectedModId(modules[currentIndex+1].id); }} disabled={currentIndex===modules.length-1} className={`flex items-center gap-2 px-8 py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${currentIndex===modules.length-1?'opacity-20':'bg-[#00E5FF] text-black shadow-[0_0_20px_rgba(0,229,255,0.2)]'}`}>Siguiente <ChevronRight size={16}/></button>
+                  <button onClick={() => { if(currentIndex<modules.length-1) setSelectedModId(modules[currentIndex+1].id); }} disabled={currentIndex===modules.length-1} className={`flex items-center gap-2 px-8 py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${currentIndex===modules.length-1?'opacity-20 cursor-not-allowed':'bg-[#00E5FF] text-black shadow-[0_0_20px_rgba(0,229,255,0.2)] hover:scale-105'}`}>Siguiente <ChevronRight size={16}/></button>
                 </div>
               </div>
             ) : null}
           </div>
         </div>
       ) : (
-        /* VISTA CERTIFICADO CON DESCARGA PIXEL-PERFECT[cite: 2] */
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-10 animate-in zoom-in-95 duration-500" onMouseMove={handleMouseMove}>
+        /* VISTA CERTIFICADO CON DOWNLOAD PERFECTO */
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-10 animate-in zoom-in-95 duration-500">
           {!isStudentMode && (
             <div className="xl:col-span-4 space-y-6">
               <div className="bg-[#050505] p-8 rounded-[2.5rem] border border-white/5 space-y-8">
@@ -375,12 +419,12 @@ export default function CourseEditorPage() {
 
           <div className={`${isStudentMode ? 'xl:col-span-12' : 'xl:col-span-8'} flex flex-col items-center gap-10`}>
              {isStudentMode && !isUnlocked ? (
-                <div className="bg-[#050505] border border-red-500/20 p-20 rounded-[3rem] text-center space-y-6 max-w-2xl"><div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500"><Lock size={40}/></div><h2 className="text-3xl font-black uppercase italic">Certificado Bloqueado</h2><p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Acredita tu conocimiento en la evaluación final para liberar tu diploma oficial.</p></div>
+                <div className="bg-[#050505] border border-red-500/20 p-20 rounded-[3rem] text-center space-y-6 max-w-2xl"><div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500 shadow-[0_0_30px_rgba(239,68,68,0.1)]"><Lock size={40}/></div><h2 className="text-3xl font-black uppercase italic tracking-tighter">Certificado Bloqueado</h2><p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Acredita tu conocimiento en la evaluación final para liberar tu diploma oficial.</p></div>
              ) : (
                <div className="w-full flex flex-col items-center gap-10">
-                  {/* CONTENEDOR MAESTRO DE CAPTURA[cite: 2] */}
+                  {/* ÁREA DE CAPTURA - ID FIJO Y Z-INDEX SEGUROS */}
                   <div 
-                    id="cert-area"
+                    id="cert-capture-area"
                     ref={containerRef} 
                     className="relative w-full max-w-4xl aspect-[1.414/1] bg-white shadow-[0_40px_100px_rgba(0,0,0,0.5)] overflow-hidden border border-white/10 select-none"
                   >
@@ -399,7 +443,7 @@ export default function CourseEditorPage() {
                        ))}
                      </div>
                   </div>
-                  {isStudentMode && <button onClick={downloadCertificate} disabled={isSaving} className="bg-[#00E5FF] text-black px-12 py-5 rounded-2xl font-black text-xs uppercase shadow-[0_0_40px_rgba(0,229,255,0.3)] hover:scale-105 transition-all flex items-center gap-3 active:scale-95">{isSaving ? <RefreshCw className="animate-spin" size={18}/> : <Download size={18}/>} {isSaving ? 'Renderizando...' : 'Descargar Diploma Oficial'}</button>}
+                  {isStudentMode && <button onClick={downloadCertificate} disabled={isSaving} className="bg-[#00E5FF] text-black px-12 py-5 rounded-2xl font-black text-xs uppercase shadow-[0_0_40px_rgba(0,229,255,0.3)] hover:scale-105 transition-all flex items-center gap-3 active:scale-95">{isSaving ? <RefreshCw className="animate-spin" size={18}/> : <Download size={18}/>} {isSaving ? 'Capturando HD...' : 'Descargar Diploma Oficial'}</button>}
                </div>
              )}
           </div>
