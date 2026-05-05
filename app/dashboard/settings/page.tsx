@@ -1,28 +1,33 @@
 'use client'
 import { useState, useContext } from 'react'
-import { UserContext } from '@/lib/context'
-import { createClient } from '@/lib/supabase'
-import { User, Shield, Check, Save } from 'lucide-react'
+import { UserContext } from '../../../lib/context'
+import { createClient } from '../../../lib/supabase'
+import { User, Shield, Check, Save, RefreshCw } from 'lucide-react'
 
 export default function SettingsPage() {
   const { profile } = useContext(UserContext)
   const [newName, setNewName] = useState(profile?.full_name || '')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
-  const supabase = createClient()
 
   const handleUpdate = async () => {
     setLoading(true)
-    const { error } = await supabase
-      .from('profiles')
-      .update({ full_name: newName })
-      .eq('id', profile.id)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: newName })
+        .eq('id', profile.id)
 
-    if (!error) {
-      setSuccess(true)
-      setTimeout(() => setSuccess(false), 3000)
+      if (!error) {
+        setSuccess(true)
+        setTimeout(() => setSuccess(false), 3000)
+      }
+    } catch (err) {
+      console.error('Error updating profile:', err)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (

@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
+import { createClient } from '../../../../lib/supabase'
 import { jsPDF } from 'jspdf'
 import { 
   ChevronLeft, Video, FileCode, FileText, 
@@ -12,7 +12,6 @@ import {
 export default function CourseEditorPage() {
   const { id } = useParams()
   const router = useRouter()
-  const supabase = createClient()
   const containerRef = useRef<HTMLDivElement>(null)
   
   const [loading, setLoading] = useState(true)
@@ -46,6 +45,7 @@ export default function CourseEditorPage() {
   useEffect(() => {
     const fetchInitData = async () => {
       setLoading(true)
+      const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return; }
 
@@ -72,7 +72,7 @@ export default function CourseEditorPage() {
       } finally { setLoading(false) }
     }
     if (id) fetchInitData()
-  }, [id, supabase, router])
+  }, [id, router])
 
   const selectedModule = modules.find(m => m.id === selectedModId)
 
@@ -82,6 +82,24 @@ export default function CourseEditorPage() {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
+  }
+
+  const handleFileUpload = async (e: any, type: 'content' | 'cert') => {
+    const file = e.target.files[0]; if (!file) return;
+    setUploading(true)
+    try {
+      const supabase = createClient()
+      const { data } = await supabase.storage.from('course_materials').upload(`${Date.now()}-${file.name}`, file)
+      if (data) {
+        const url = supabase.storage.from('course_materials').getPublicUrl(data.path).data.publicUrl
+        if (type === 'cert') setCertSettings({...certSettings, bgImage: url})
+        else updateModule('content', url)
+      }
+    } catch (err) {
+      console.error('Error uploading file:', err)
+    } finally {
+      setUploading(false)
+    }
   }
 
   // 🔄 SWAPPING LOGIC (CONTENIDOS Y PREGUNTAS)
@@ -161,7 +179,10 @@ export default function CourseEditorPage() {
             </button>
           )}
           {!isStudentMode && isAdmin && (
-            <button onClick={() => supabase.from('courses').update({ modules, certificate_config: certSettings }).eq('id', id).then(() => alert("✅ Nodo Sincronizado"))} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase shadow-[0_0_20px_rgba(0,229,255,0.2)]">Publicar Cambios</button>
+            <button onClick={() => {
+              const supabase = createClient()
+              supabase.from('courses').update({ modules, certificate_config: certSettings }).eq('id', id).then(() => alert("✅ Nodo Sincronizado"))
+            }} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase shadow-[0_0_20px_rgba(0,229,255,0.2)]">Publicar Cambios</button>
           )}
         </div>
       </div>

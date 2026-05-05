@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase'
+import { createClient } from '../../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import { RefreshCw, ChevronRight, GraduationCap } from 'lucide-react'
 
@@ -8,17 +8,17 @@ export default function AcademiaPage() {
   const [courses, setCourses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [navigatingId, setNavigatingId] = useState<string | null>(null) // Feedback de carga
-  const supabase = createClient()
   const router = useRouter()
 
   useEffect(() => {
     const fetchCourses = async () => {
+      const supabase = createClient()
       const { data } = await supabase.from('courses').select('*').order('created_at', { ascending: false })
       if (data) setCourses(data)
       setLoading(false)
     }
     fetchCourses()
-  }, [supabase])
+  }, [])
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-[#00E5FF]">

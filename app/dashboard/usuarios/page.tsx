@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/lib/supabase'
+import { createClient } from '../../../lib/supabase'
 import { 
   UserPlus, 
   Search, 
@@ -14,7 +14,7 @@ import {
   RefreshCcw,
   Copy
 } from 'lucide-react'
-import BulkUploadModal from '@/components/BulkUploadModal'
+import BulkUploadModal from '../../../components/BulkUploadModal'
 
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<any[]>([])
@@ -35,14 +35,18 @@ export default function UsuariosPage() {
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserRole, setNewUserRole] = useState('estudiante')
 
-  const supabase = createClient()
-
   const fetchUsuarios = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
-    if (data) setUsuarios(data)
-    setLoading(false)
-  }, [supabase])
+    try {
+      const supabase = createClient()
+      const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+      if (data) setUsuarios(data)
+    } catch (err) {
+      console.error('Error fetching usuarios:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     fetchUsuarios()
@@ -59,20 +63,30 @@ export default function UsuariosPage() {
 
   const handleResetProtocol = async () => {
     if (!selectedUser) return
-    const { error } = await supabase.auth.resetPasswordForEmail(selectedUser.email, {
-      redirectTo: `${window.location.origin}/auth/callback`,
-    })
-    
-    if (!error) {
-      alert("Enviado al correo del nodo.")
-      setIsKeyModalOpen(false)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.resetPasswordForEmail(selectedUser.email, {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      })
+      
+      if (!error) {
+        alert("Enviado al correo del nodo.")
+        setIsKeyModalOpen(false)
+      }
+    } catch (err) {
+      console.error('Error resetting password:', err)
     }
   }
 
   const deleteUsuario = async (id: string) => {
     if (!confirm('¿Dar de baja?')) return
-    await supabase.from('profiles').delete().eq('id', id)
-    fetchUsuarios()
+    try {
+      const supabase = createClient()
+      await supabase.from('profiles').delete().eq('id', id)
+      fetchUsuarios()
+    } catch (err) {
+      console.error('Error deleting user:', err)
+    }
   }
 
   const filteredUsuarios = usuarios.filter(user => 
