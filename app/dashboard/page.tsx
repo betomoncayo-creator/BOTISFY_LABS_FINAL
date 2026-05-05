@@ -1,7 +1,7 @@
 'use client'
 import { useContext, useEffect, useState } from 'react'
-import { UserContext } from '@/lib/context'
-import { createClient } from '@/lib/supabase'
+import { UserContext } from '../../lib/context'
+import { createClient } from '../../lib/supabase'
 import { 
   Users, Zap, Clock, Award, BookOpen, Activity, 
   UserPlus, BookMarked, Shield, RefreshCw 
@@ -11,7 +11,6 @@ export default function DashboardPage() {
   const { profile } = useContext(UserContext)
   const [stats, setStats] = useState({ activeUsers: 0, loading: true })
   const [recentLogs, setRecentLogs] = useState([])
-  const supabase = createClient()
   
   const userRole = profile?.role?.toLowerCase().trim() || 'estudiante'
   const isAdmin = userRole === 'admin'
@@ -21,24 +20,31 @@ export default function DashboardPage() {
     async function fetchDashboardData() {
       if (!isAdmin) return; // El estudiante no necesita esta carga
 
-      // 1. Conteo real de colaboradores
-      const { count } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-      
-      // 2. Fetch de registros reales (últimos perfiles actualizados)
-      const { data: logs } = await supabase
-        .from('profiles')
-        .select('full_name, role, updated_at')
-        .order('updated_at', { ascending: false })
-        .limit(3)
+      try {
+        const supabase = createClient()
+        
+        // 1. Conteo real de colaboradores
+        const { count } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true })
+        
+        // 2. Fetch de registros reales (últimos perfiles actualizados)
+        const { data: logs } = await supabase
+          .from('profiles')
+          .select('full_name, role, updated_at')
+          .order('updated_at', { ascending: false })
+          .limit(3)
 
-      setStats({ activeUsers: count || 0, loading: false })
-      setRecentLogs(logs || [])
+        setStats({ activeUsers: count || 0, loading: false })
+        setRecentLogs(logs || [])
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err)
+        setStats({ activeUsers: 0, loading: false })
+      }
     }
 
     fetchDashboardData()
-  }, [isAdmin, supabase])
+  }, [isAdmin])
 
   // 🛠️ HANDLER: Invitar Colaborador
   const handleInvite = () => {
@@ -134,7 +140,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* REGISTROS RECIENTES: DESDE LA BASE[cite: 4] */}
+            {/* REGISTROS RECIENTES */}
             <div className="lg:col-span-2 space-y-6">
               <p className="text-zinc-600 text-[9px] font-black uppercase tracking-[0.3em] ml-4">Registros Recientes</p>
               <div className="bg-[#050505] border border-white/5 rounded-[2.5rem] overflow-hidden">
@@ -175,7 +181,7 @@ export default function DashboardPage() {
           </div>
         </>
       ) : (
-        /* 🎓 VISTA ESTUDIANTE (Mantenida intacta)[cite: 4] */
+        /* 🎓 VISTA ESTUDIANTE */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem]">

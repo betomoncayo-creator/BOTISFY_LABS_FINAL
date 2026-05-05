@@ -5,8 +5,8 @@ import { createClient } from '@/lib/supabase'
 import { jsPDF } from 'jspdf'
 import { 
   ChevronLeft, Video, FileCode, FileText, 
-  Save, Trash2, CheckCircle2, ArrowUp, ArrowDown, 
-  UploadCloud, RefreshCw, Plus, User, Edit3, ChevronRight, Lock, Download, Square, CheckSquare, XCircle, Eye
+  Trash2, CheckCircle2, ArrowUp, ArrowDown, 
+  UploadCloud, RefreshCw, User, Edit3, Lock, Download, Square, CheckSquare, Eye
 } from 'lucide-react'
 
 export default function CourseEditorPage() {
@@ -20,12 +20,10 @@ export default function CourseEditorPage() {
   const [selectedModId, setSelectedModId] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
   
-  // 🔐 SEGURIDAD DE ROLES
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [isAdmin, setIsAdmin] = useState(false) 
   const [isStudentMode, setIsStudentMode] = useState(true) 
   
-  // 📝 EVALUACIÓN Y RESULTADOS
   const [isUnlocked, setIsUnlocked] = useState(false) 
   const [userAnswers, setUserAnswers] = useState<Record<number, string[]>>({}) 
   const [simulationResult, setSimulationResult] = useState<{score: number, passed: boolean} | null>(null)
@@ -33,7 +31,6 @@ export default function CourseEditorPage() {
   const [courseData, setCourseData] = useState<any>(null)
   const [modules, setModules] = useState<any[]>([])
 
-  // 🎨 CONFIGURACIÓN DEL CERTIFICADO (DRAG & DROP + SLIDERS)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [certSettings, setCertSettings] = useState<any>({
     bgImage: null,
@@ -44,10 +41,7 @@ export default function CourseEditorPage() {
     }
   })
 
-  // Obtener fecha actual formateada para Botisfy Labs
-  const getTodayFormatted = () => {
-    return new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  }
+  const getTodayFormatted = () => new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   useEffect(() => {
     const fetchInitData = async () => {
@@ -55,29 +49,34 @@ export default function CourseEditorPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return; }
 
-      const { data: userData } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-      if (userData) {
-        setCurrentUser(userData)
-        const realIsAdmin = userData.role?.toLowerCase() === 'admin'
-        setIsAdmin(realIsAdmin)
-        setIsStudentMode(!realIsAdmin) 
-      }
+      // 🚀 INGENIERÍA: Paralelización para velocidad máxima
+      try {
+        const [profileRes, courseRes] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', session.user.id).single(),
+          supabase.from('courses').select('*').eq('id', id).single()
+        ])
 
-      const { data: course } = await supabase.from('courses').select('*').eq('id', id).single()
-      if (course) {
-        setCourseData(course)
-        setModules(course.modules || [])
-        if (course.certificate_config?.elements) setCertSettings(course.certificate_config)
-        if (course.modules?.length > 0) setSelectedModId(course.modules[0].id)
-      }
-      setLoading(false)
+        if (profileRes.data) {
+          setCurrentUser(profileRes.data)
+          const realIsAdmin = profileRes.data.role?.toLowerCase() === 'admin'
+          setIsAdmin(realIsAdmin)
+          setIsStudentMode(!realIsAdmin)
+        }
+
+        if (courseRes.data) {
+          setCourseData(courseRes.data)
+          setModules(courseRes.data.modules || [])
+          if (courseRes.data.certificate_config?.elements) setCertSettings(courseRes.data.certificate_config)
+          if (courseRes.data.modules?.length > 0) setSelectedModId(courseRes.data.modules[0].id)
+        }
+      } finally { setLoading(false) }
     }
     if (id) fetchInitData()
   }, [id, supabase, router])
 
   const selectedModule = modules.find(m => m.id === selectedModId)
 
-  // 🛠️ FIX YOUTUBE Y GESTIÓN DE ARCHIVOS
+  // 🛠️ FIX YOUTUBE
   const getEmbedUrl = (url: string) => {
     if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -85,19 +84,7 @@ export default function CourseEditorPage() {
     return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
   }
 
-  const handleFileUpload = async (e: any, type: 'content' | 'cert') => {
-    const file = e.target.files[0]; if (!file) return;
-    setUploading(true)
-    const { data } = await supabase.storage.from('course_materials').upload(`${Date.now()}-${file.name}`, file)
-    if (data) {
-      const url = supabase.storage.from('course_materials').getPublicUrl(data.path).data.publicUrl
-      if (type === 'cert') setCertSettings({...certSettings, bgImage: url})
-      else updateModule('content', url)
-    }
-    setUploading(false)
-  }
-
-  // 🔄 REORDENAMIENTO (SWAPPING)[cite: 2]
+  // 🔄 SWAPPING LOGIC (CONTENIDOS Y PREGUNTAS)
   const moveItem = (list: any[], idx: number, dir: 'up' | 'down') => {
     const newList = [...list]
     const targetIdx = dir === 'up' ? idx - 1 : idx + 1
@@ -111,7 +98,7 @@ export default function CourseEditorPage() {
     setModules(modules.map(m => m.id === selectedModId ? { ...m, [field]: value } : m))
   }
 
-  // 📝 MOTOR DE CALIFICACIÓN (70%)[cite: 1, 2]
+  // 📝 MOTOR DE CALIFICACIÓN (70%)
   const runSimulation = () => {
     if (!selectedModule?.questions) return
     const objectiveQs = selectedModule.questions.filter((q: any) => q.type !== 'open')
@@ -139,10 +126,19 @@ export default function CourseEditorPage() {
         doc.text(val.toUpperCase(), (el.left / 100) * 1920, (el.top / 100) * 1358, { align: 'center' });
       }
     });
-    return doc;
+    doc.save(`Certificado-${courseData?.title}.pdf`);
   }
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen text-[#00E5FF]"><RefreshCw className="animate-spin" /></div>
+  // 🌀 CARGA NEURAL
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-black text-[#00E5FF]">
+      <div className="relative">
+        <div className="absolute inset-0 bg-[#00E5FF]/20 blur-3xl animate-pulse rounded-full" />
+        <RefreshCw className="animate-spin relative z-10" size={40} />
+      </div>
+      <p className="mt-6 text-[10px] font-black uppercase tracking-[0.4em] animate-pulse">Sincronizando Neural Academy...</p>
+    </div>
+  )
 
   return (
     <div className="w-full space-y-8 pb-20 text-white animate-in fade-in" onMouseMove={(e) => {
@@ -153,20 +149,19 @@ export default function CourseEditorPage() {
       setCertSettings((p: any) => ({ ...p, elements: { ...p.elements, [draggingId]: { ...p.elements[draggingId], left: x, top: y } } }))
     }} onMouseUp={() => setDraggingId(null)}>
       
-      {/* 🟢 HEADER DE CONTROL */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-white/5 pb-8">
         <div className="flex items-center gap-6">
-          <button onClick={() => router.back()} className="p-3 bg-white/5 rounded-xl border border-white/5"><ChevronLeft size={20} /></button>
+          <button onClick={() => router.back()} className="p-3 bg-white/5 rounded-xl border border-white/5 hover:bg-white/10 transition-all"><ChevronLeft size={20} /></button>
           <h1 className="text-2xl md:text-4xl font-black italic uppercase tracking-tighter leading-none">{courseData?.title}</h1>
         </div>
         <div className="flex items-center gap-3">
           {isAdmin && (
-            <button onClick={() => { setIsStudentMode(!isStudentMode); setSimulationResult(null); }} className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${isStudentMode ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-zinc-500'}`}>
+            <button onClick={() => setIsStudentMode(!isStudentMode)} className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${isStudentMode ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-zinc-500'}`}>
               {isStudentMode ? <Edit3 size={14}/> : <User size={14}/>} {isStudentMode ? 'MODO DOCENTE' : 'VISTA ESTUDIANTE'}
             </button>
           )}
-          {!isStudentMode && (
-            <button onClick={() => supabase.from('courses').update({ modules, certificate_config: certSettings }).eq('id', id).then(() => alert("✅ Sincronizado"))} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase shadow-[0_0_20px_rgba(0,229,255,0.2)]">Publicar Cambios</button>
+          {!isStudentMode && isAdmin && (
+            <button onClick={() => supabase.from('courses').update({ modules, certificate_config: certSettings }).eq('id', id).then(() => alert("✅ Nodo Sincronizado"))} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase shadow-[0_0_20px_rgba(0,229,255,0.2)]">Publicar Cambios</button>
           )}
         </div>
       </div>
@@ -178,7 +173,6 @@ export default function CourseEditorPage() {
 
       {activeTab === 'modulos' ? (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
-          {/* 🟢 BARRA LATERAL (GESTIÓN COMPLETA)[cite: 2] */}
           <div className="xl:col-span-4 space-y-4">
             <div className="space-y-3">
               {modules.map((mod, idx) => (
@@ -199,17 +193,16 @@ export default function CourseEditorPage() {
             </div>
             {!isStudentMode && (
               <div className="grid grid-cols-2 gap-3 mt-6 p-4 bg-white/[0.02] rounded-[2rem] border border-white/5">
-                {[ {t:'video', i:Video, l:'VIDEO'}, {t:'embed', i:FileCode, l:'EMBED'}, {t:'pdf', i:FileText, l:'PDF'}, {t:'quiz', i:CheckSquare, l:'QUIZ'} ].map(item => (
-                  <button key={item.t} onClick={() => setModules([...modules, { id: Date.now(), title: `NUEVO ${item.l}`, type: item.t, content: '', questions: [] }])} className="flex flex-col items-center gap-2 p-4 bg-white/5 rounded-xl border border-white/5 hover:border-[#00E5FF]/20 group transition-all text-center">
+                {[ {t:'video', i:Video}, {t:'embed', i:FileCode}, {t:'pdf', i:FileText}, {t:'quiz', i:CheckSquare} ].map(item => (
+                  <button key={item.t} onClick={() => setModules([...modules, { id: Date.now(), title: `NUEVO ${item.t.toUpperCase()}`, type: item.t, content: '', questions: [] }])} className="flex flex-col items-center gap-2 p-4 bg-white/5 rounded-xl border border-white/5 hover:border-[#00E5FF]/20 group transition-all text-center">
                     <item.i size={18} className="text-zinc-600 group-hover:text-[#00E5FF]" />
-                    <span className="text-[7px] font-black uppercase text-zinc-700">{item.l}</span>
+                    <span className="text-[7px] font-black uppercase text-zinc-700">{item.t}</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* 🟢 ÁREA DE TRABAJO (EDITOR Y VISOR)[cite: 2] */}
           <div className="xl:col-span-8">
             {selectedModule && (
               <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem] space-y-8 animate-in slide-in-from-right-4">
@@ -230,7 +223,7 @@ export default function CourseEditorPage() {
                     <div className="w-full p-10 space-y-10 overflow-y-auto max-h-[600px]">
                        {!isStudentMode && (
                          <div className="flex gap-2 justify-center pb-6 border-b border-white/5">
-                            {['simple', 'multiple', 'open'].map(t => <button key={t} onClick={() => updateModule('questions', [...(selectedModule.questions || []), {id: Date.now(), type: t, text: 'Nueva Pregunta', options: ['A', 'B'], correctAnswers: []}])} className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:text-[#00E5FF] transition-all">+ {t}</button>)}
+                            {['simple', 'multiple', 'open'].map(t => <button key={t} onClick={() => updateModule('questions', [...(selectedModule.questions || []), {id: Date.now(), type: t, text: 'Nueva Pregunta', options: ['Opción A', 'Opción B'], correctAnswers: []}])} className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-[8px] font-black uppercase hover:text-[#00E5FF] transition-all">+ {t}</button>)}
                          </div>
                        )}
                        {simulationResult ? (
@@ -288,7 +281,7 @@ export default function CourseEditorPage() {
           </div>
         </div>
       ) : (
-        /* 🖼️ CANVAS DE CERTIFICACIÓN (DYNAMISMO TOTAL)[cite: 2] */
+        /* 🖼️ CANVAS DE CERTIFICACIÓN (SLIDERS + FECHA DINÁMICA) */
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
           <div className="xl:col-span-8">
             <div ref={containerRef} className="relative w-full aspect-[1.414/1] bg-white rounded-3xl shadow-2xl overflow-hidden border border-white/10">
@@ -315,7 +308,7 @@ export default function CourseEditorPage() {
                 ))}
               </div>
             ) : (
-              <button onClick={async () => (await generatePDF()).save('Certificado-Botisfy.pdf')} className="w-full bg-[#00E5FF] text-black py-6 rounded-3xl font-black text-xs uppercase shadow-[0_0_40px_rgba(0,229,255,0.3)] flex items-center justify-center gap-3"><Download size={20}/> Descargar Diploma</button>
+              <button onClick={generatePDF} className="w-full bg-[#00E5FF] text-black py-6 rounded-3xl font-black text-xs uppercase shadow-[0_0_40px_rgba(0,229,255,0.3)] flex items-center justify-center gap-3"><Download size={20}/> Descargar Diploma</button>
             )}
           </div>
         </div>

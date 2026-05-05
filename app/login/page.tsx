@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase'
+import { createClient } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Loader2, ShieldCheck } from 'lucide-react'
@@ -10,7 +10,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const supabase = createClient()
   const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -19,6 +18,7 @@ export default function LoginPage() {
     setError(null)
     
     try {
+      const supabase = createClient()
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
