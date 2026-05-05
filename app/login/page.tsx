@@ -4,11 +4,14 @@ import { createClient } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Loader2, ShieldCheck } from 'lucide-react'
+import { loginSchema, validateData } from '../../lib/schemas'
+import React from 'react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [transitioning, setTransitioning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
@@ -17,22 +20,55 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     
+    // 🎯 VALIDAR CON ZOD PRIMERO
+    const validation = validateData(loginSchema, { email, password })
+    if (!validation.success) {
+      setError(validation.error || 'Error de validación')
+      setLoading(false)
+      return
+    }
+
     try {
       const supabase = createClient()
       const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: validation.data!.email,
+        password: validation.data!.password,
       })
 
       if (authError) throw authError
 
+      // TRANSICIÓN SUAVE
+      setTransitioning(true)
+      await new Promise(resolve => setTimeout(resolve, 800))
+      
       router.push('/dashboard')
       router.refresh()
     } catch (err: any) {
       setError(err.message || 'Error al intentar conectar con el nodo.')
-    } finally {
       setLoading(false)
     }
+  }
+
+  // SI ESTÁ EN TRANSICIÓN, MOSTRAR PANTALLA DE CARGA SUAVE
+  if (transitioning) {
+    return (
+      <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="absolute inset-0 bg-cyan-400/30 blur-3xl rounded-full animate-pulse" />
+            <Image 
+              src="/logo-botisfy.png" 
+              alt="Botisfy Labs" 
+              width={100} 
+              height={100} 
+              className="relative drop-shadow-[0_0_20px_rgba(0,229,255,0.4)]"
+            />
+          </div>
+          <Loader2 size={32} className="text-cyan-400 animate-spin" />
+          <p className="text-cyan-400 text-sm font-bold uppercase tracking-widest">Cargando...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -79,10 +115,11 @@ export default function LoginPage() {
               <div className="space-y-4">
                 <input
                   type="email"
-                  placeholder="freddy.moncayo@hotmail.com"
+                  placeholder="tu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-[#E8F0FE] text-zinc-900 p-5 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all placeholder:text-zinc-400"
+                  disabled={loading}
+                  className="w-full bg-[#E8F0FE] text-zinc-900 p-5 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all placeholder:text-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed"
                   required
                 />
                 <input
@@ -90,7 +127,8 @@ export default function LoginPage() {
                   placeholder="••••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#E8F0FE] text-zinc-900 p-5 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all"
+                  disabled={loading}
+                  className="w-full bg-[#E8F0FE] text-zinc-900 p-5 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   required
                 />
               </div>
@@ -104,10 +142,13 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-[#00E5FF] hover:bg-[#00d1e6] text-black py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-[0_0_40px_rgba(0,229,255,0.3)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 disabled:opacity-50"
+                className="w-full bg-[#00E5FF] hover:bg-[#00d1e6] disabled:bg-[#00a8cc] text-black py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-[0_0_40px_rgba(0,229,255,0.3)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 disabled:opacity-75"
               >
                 {loading ? (
-                  <Loader2 className="animate-spin" size={18} />
+                  <>
+                    <Loader2 className="animate-spin" size={18} />
+                    Conectando...
+                  </>
                 ) : (
                   <>Iniciar Conexión <ShieldCheck size={18} /></>
                 )}
