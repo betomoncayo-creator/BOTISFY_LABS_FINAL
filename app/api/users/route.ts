@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse, NextRequest } from 'next/server'
-import { crearUsuarioSchema, editarUsuarioSchema, validarUsuario } from '../../lib/usuario-schemas'
+import { crearUsuarioSchema, editarUsuarioSchema, validarUsuario } from '../../../lib/usuario-schemas'
 
 export const dynamic = 'force-dynamic'
 
