@@ -9,56 +9,137 @@ import {
 
 export default function DashboardPage() {
   const { profile } = useContext(UserContext)
-  const [stats, setStats] = useState({ activeUsers: 0, loading: true })
-  const [recentLogs, setRecentLogs] = useState([])
-  
+  const [stats, setStats] = useState({
+    activeUsers: 0,
+    completionRate: 0,
+    trainingHours: 0,
+    certificates: 0,
+    loading: true
+  })
+  const [recentLogs, setRecentLogs] = useState<any[]>([])
+  const [myProgress, setMyProgress] = useState<any[]>([])
+
   const userRole = profile?.role?.toLowerCase().trim() || 'estudiante'
   const isAdmin = userRole === 'admin'
 
-  // 🔄 SINCRONIZACIÓN DE NODOS EN TIEMPO REAL
   useEffect(() => {
     async function fetchDashboardData() {
-      if (!isAdmin) return; // El estudiante no necesita esta carga
+      const supabase = createClient()
 
-      try {
-        const supabase = createClient()
-        
-        // 1. Conteo real de colaboradores
-        const { count } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact', head: true })
-        
-        // 2. Fetch de registros reales (últimos perfiles actualizados)
-        const { data: logs } = await supabase
-          .from('profiles')
-          .select('full_name, role, updated_at')
-          .order('updated_at', { ascending: false })
-          .limit(3)
+      if (isAdmin) {
+        try {
+          // 1. Total colaboradores
+          const { count: usersCount } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true })
 
-        setStats({ activeUsers: count || 0, loading: false })
-        setRecentLogs(logs || [])
-      } catch (err) {
-        console.error('Error fetching dashboard data:', err)
-        setStats({ activeUsers: 0, loading: false })
+          // 2. Tasa de finalización
+          const { count: totalProgress } = await supabase
+            .from('student_progress')
+            .select('*', { count: 'exact', head: true })
+
+          const { count: completedCount } = await supabase
+            .from('student_progress')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_completed', true)
+
+          const completionRate = totalProgress && totalProgress > 0
+            ? Math.round((completedCount || 0) * 100 / totalProgress)
+            : 0
+
+          // 3. Horas capacitación — evita mismatch text vs uuid
+          let trainingHours = 0
+          const { data: completedRows } = await supabase
+            .from('student_progress')
+            .select('course_id')
+            .eq('is_completed', true)
+
+          if (completedRows && completedRows.length > 0) {
+            const { data: allCourses } = await supabase
+              .from('courses')
+              .select('id, duration_minutes')
+
+            if (allCourses) {
+              const completedIds = completedRows.map((r: any) => String(r.course_id))
+              const matched = allCourses.filter((c: any) =>
+                completedIds.includes(String(c.id))
+              )
+              const totalMinutes = matched.reduce(
+                (acc: number, c: any) => acc + (c.duration_minutes || 0), 0
+              )
+              trainingHours = Math.round(totalMinutes / 60)
+            }
+          }
+
+          // 4. Registros recientes
+          const { data: logs } = await supabase
+            .from('profiles')
+            .select('full_name, role, updated_at')
+            .order('updated_at', { ascending: false })
+            .limit(3)
+
+          setStats({
+            activeUsers: usersCount || 0,
+            completionRate,
+            trainingHours,
+            certificates: completedCount || 0,
+            loading: false
+          })
+          setRecentLogs(logs || [])
+
+        } catch (err) {
+          console.error('Error fetching admin data:', err)
+          setStats(s => ({ ...s, loading: false }))
+        }
+
+      } else {
+        // Vista estudiante
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (!session) return
+
+          // Traemos progreso del estudiante
+          const { data: progressRows } = await supabase
+            .from('student_progress')
+            .select('*')
+            .eq('profile_id', session.user.id)
+
+          if (progressRows && progressRows.length > 0) {
+            // Traemos todos los cursos y hacemos el join manual
+            const { data: allCourses } = await supabase
+              .from('courses')
+              .select('id, title, duration_minutes, image_url')
+
+            const merged = progressRows.map((p: any) => ({
+              ...p,
+              courses: allCourses?.find(
+                (c: any) => String(c.id) === String(p.course_id)
+              ) || null
+            }))
+
+            setMyProgress(merged)
+          } else {
+            setMyProgress([])
+          }
+
+          setStats(s => ({ ...s, loading: false }))
+
+        } catch (err) {
+          console.error('Error fetching student data:', err)
+          setStats(s => ({ ...s, loading: false }))
+        }
       }
     }
 
-    fetchDashboardData()
-  }, [isAdmin])
-
-  // 🛠️ HANDLER: Invitar Colaborador
-  const handleInvite = () => {
-    // Aquí puedes disparar un modal o redirigir al directorio
-    window.location.href = '/dashboard/usuarios'
-  }
+    if (profile) fetchDashboardData()
+  }, [isAdmin, profile])
 
   return (
     <div className="space-y-10 animate-in fade-in duration-1000">
-      
-      {/* ⚡ HEADER DINÁMICO */}
+
+      {/* HEADER */}
       <div className="bg-[#050505] border border-white/5 p-8 md:p-12 rounded-[3rem] relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-8">
         <div className="absolute top-0 right-0 w-80 h-80 bg-[#00E5FF]/5 blur-[120px] -mr-40 -mt-40 pointer-events-none" />
-        
         <div className="relative z-10">
           <h1 className="text-4xl md:text-6xl font-black italic text-white tracking-tighter uppercase leading-none">
             Hola, <span className="text-[#00E5FF]">{profile?.full_name?.split(' ')[0] || 'Usuario'}</span>
@@ -70,10 +151,11 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
-
         <div className="relative z-10 bg-white/5 border border-white/10 px-8 py-6 rounded-[2rem] flex items-center gap-4 backdrop-blur-md self-start md:self-center">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
-            isAdmin ? 'bg-[#00E5FF]/10 border-[#00E5FF]/20 text-[#00E5FF]' : 'bg-purple-500/10 border-purple-500/20 text-purple-400'
+            isAdmin
+              ? 'bg-[#00E5FF]/10 border-[#00E5FF]/20 text-[#00E5FF]'
+              : 'bg-purple-500/10 border-purple-500/20 text-purple-400'
           }`}>
             <Shield size={20} className={isAdmin ? 'animate-pulse' : ''} />
           </div>
@@ -88,36 +170,34 @@ export default function DashboardPage() {
 
       {isAdmin ? (
         <>
-          {/* VISTA ADMINISTRADOR: MÉTRICAS REALES */}
+          {/* MÉTRICAS */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-[#050505] border border-white/5 p-8 rounded-[2.5rem]">
-              <Users className="text-blue-400 mb-6 opacity-40" size={20} />
-              <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest mb-2">Colaboradores Activos</p>
-              <p className="text-white text-3xl font-black italic tracking-tighter">
-                {stats.loading ? <RefreshCw className="animate-spin" size={20} /> : stats.activeUsers}
-              </p>
-            </div>
-            {/* Las demás métricas se dinamizarán cuando integremos el módulo de cursos */}
             {[
-              { label: 'Tasa de Finalización', value: '85%', icon: Zap, color: 'text-purple-400' },
-              { label: 'Horas Capacitación', value: '124', icon: Clock, color: 'text-yellow-400' },
-              { label: 'Certificados Emitidos', value: '12', icon: Award, color: 'text-green-400' },
+              { label: 'Colaboradores Activos', value: stats.activeUsers, icon: Users, color: 'text-blue-400' },
+              { label: 'Tasa de Finalización', value: `${stats.completionRate}%`, icon: Zap, color: 'text-purple-400' },
+              { label: 'Horas Capacitación', value: stats.trainingHours, icon: Clock, color: 'text-yellow-400' },
+              { label: 'Certificados Emitidos', value: stats.certificates, icon: Award, color: 'text-green-400' },
             ].map((stat, i) => (
               <div key={i} className="bg-[#050505] border border-white/5 p-8 rounded-[2.5rem]">
                 <stat.icon className={`${stat.color} mb-6 opacity-40`} size={20} />
                 <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest mb-2">{stat.label}</p>
-                <p className="text-white text-3xl font-black italic tracking-tighter">{stat.value}</p>
+                <p className="text-white text-3xl font-black italic tracking-tighter">
+                  {stats.loading
+                    ? <RefreshCw className="animate-spin" size={20} />
+                    : stat.value
+                  }
+                </p>
               </div>
             ))}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* ACCIONES REALES */}
+            {/* ACCIONES */}
             <div className="space-y-6">
               <p className="text-zinc-600 text-[9px] font-black uppercase tracking-[0.3em] ml-4">Acciones</p>
               <div className="space-y-4">
-                <button 
-                  onClick={handleInvite}
+                <button
+                  onClick={() => window.location.href = '/dashboard/usuarios'}
                   className="w-full bg-[#050505] border border-white/5 p-6 rounded-3xl flex items-center gap-6 group hover:border-[#00E5FF]/30 transition-all text-left"
                 >
                   <div className="w-12 h-12 bg-[#00E5FF]/10 rounded-2xl flex items-center justify-center text-[#00E5FF] group-hover:scale-110 transition-transform">
@@ -128,13 +208,16 @@ export default function DashboardPage() {
                     <p className="text-zinc-600 text-[9px] font-bold uppercase mt-1">Añadir nuevo acceso</p>
                   </div>
                 </button>
-                <button className="w-full bg-[#050505] border border-white/5 p-6 rounded-3xl flex items-center gap-6 group hover:border-purple-500/30 transition-all text-left">
+                <button
+                  onClick={() => window.location.href = '/dashboard/academia'}
+                  className="w-full bg-[#050505] border border-white/5 p-6 rounded-3xl flex items-center gap-6 group hover:border-purple-500/30 transition-all text-left"
+                >
                   <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
                     <BookMarked size={20} />
                   </div>
                   <div>
-                    <p className="text-white text-[11px] font-black uppercase tracking-widest">Asignar Capacitación</p>
-                    <p className="text-zinc-600 text-[9px] font-bold uppercase mt-1">Gestionar módulos</p>
+                    <p className="text-white text-[11px] font-black uppercase tracking-widest">Gestionar Cursos</p>
+                    <p className="text-zinc-600 text-[9px] font-bold uppercase mt-1">Administrar academia</p>
                   </div>
                 </button>
               </div>
@@ -156,7 +239,7 @@ export default function DashboardPage() {
                       <tr key={i} className="hover:bg-white/[0.01] transition-colors group">
                         <td className="p-6 flex items-center gap-4">
                           <div className="w-8 h-8 bg-white/5 rounded-xl flex items-center justify-center text-[10px] font-black text-zinc-500 border border-white/5 group-hover:border-[#00E5FF]/20 transition-all">
-                            {reg.full_name?.[0].toUpperCase()}
+                            {reg.full_name?.[0]?.toUpperCase()}
                           </div>
                           <div>
                             <p className="text-white text-[10px] font-black uppercase tracking-tight">{reg.full_name}</p>
@@ -171,7 +254,9 @@ export default function DashboardPage() {
                       </tr>
                     )) : (
                       <tr>
-                        <td colSpan={2} className="p-10 text-center text-zinc-600 text-[9px] uppercase font-bold tracking-widest">No hay registros aún</td>
+                        <td colSpan={2} className="p-10 text-center text-zinc-600 text-[9px] uppercase font-bold tracking-widest">
+                          No hay registros aún
+                        </td>
                       </tr>
                     )}
                   </tbody>
@@ -181,33 +266,64 @@ export default function DashboardPage() {
           </div>
         </>
       ) : (
-        /* 🎓 VISTA ESTUDIANTE */
+        /* VISTA ESTUDIANTE */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem]">
               <h3 className="text-white text-xl font-black italic uppercase tracking-tighter mb-8 flex items-center gap-3">
                 <BookOpen size={20} className="text-[#00E5FF]" /> Mis Cursos Activos
               </h3>
-              <div className="bg-white/5 border border-white/10 p-8 rounded-3xl group hover:border-[#00E5FF]/30 transition-all cursor-pointer">
-                <p className="text-white text-lg font-black italic uppercase tracking-tight">Automatización con IA 101</p>
-                <div className="mt-6">
-                  <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
-                    <span className="text-zinc-500">Progreso del Nodo</span>
-                    <span className="text-[#00E5FF]">45%</span>
-                  </div>
-                  <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-[#00E5FF] h-full rounded-full w-[45%]" />
-                  </div>
+              {stats.loading ? (
+                <div className="flex justify-center py-8">
+                  <RefreshCw className="animate-spin text-[#00E5FF]" size={24} />
                 </div>
-              </div>
+              ) : myProgress.length > 0 ? (
+                <div className="space-y-4">
+                  {myProgress.map((item, i) => {
+                    const pct = item.is_completed ? 100 : Math.min(item.current_score || 0, 100)
+                    return (
+                      <div key={i} className="bg-white/5 border border-white/10 p-6 rounded-3xl hover:border-[#00E5FF]/30 transition-all cursor-pointer">
+                        <p className="text-white text-sm font-black italic uppercase tracking-tight">
+                          {item.courses?.title || 'Curso'}
+                        </p>
+                        <div className="mt-4">
+                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
+                            <span className="text-zinc-500">Progreso</span>
+                            <span className="text-[#00E5FF]">{pct}%</span>
+                          </div>
+                          <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-[#00E5FF] h-full rounded-full transition-all"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-zinc-600 text-[9px] uppercase font-bold tracking-widest text-center py-8">
+                  No tienes cursos asignados aún
+                </p>
+              )}
             </div>
           </div>
 
           <div className="space-y-6">
-            <div className="bg-[#050505] border border-white/5 p-8 rounded-[2.5rem] relative overflow-hidden">
+            <div className="bg-[#050505] border border-white/5 p-8 rounded-[2.5rem]">
               <Activity size={18} className="text-[#00E5FF] mb-4 opacity-50" />
-              <p className="text-zinc-500 text-[9px] font-black uppercase tracking-widest mb-2">Próxima Lección</p>
-              <p className="text-white text-xs font-bold uppercase leading-relaxed tracking-wide">Configuración de Agentes Autónomos</p>
+              <p className="text-zinc-500 text-[9px] font-black uppercase tracking-widest mb-2">Cursos Completados</p>
+              <p className="text-white text-3xl font-black italic tracking-tighter">
+                {myProgress.filter(p => p.is_completed).length}
+              </p>
+            </div>
+            <div className="bg-[#050505] border border-white/5 p-8 rounded-[2.5rem]">
+              <Award size={18} className="text-green-400 mb-4 opacity-50" />
+              <p className="text-zinc-500 text-[9px] font-black uppercase tracking-widest mb-2">Certificados</p>
+              <p className="text-white text-3xl font-black italic tracking-tighter">
+                {myProgress.filter(p => p.is_completed).length}
+              </p>
             </div>
           </div>
         </div>
