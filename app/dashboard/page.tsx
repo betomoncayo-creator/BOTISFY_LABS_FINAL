@@ -28,12 +28,10 @@ export default function DashboardPage() {
 
       if (isAdmin) {
         try {
-          // 1. Total colaboradores
           const { count: usersCount } = await supabase
             .from('profiles')
             .select('*', { count: 'exact', head: true })
 
-          // 2. Tasa de finalización
           const { count: totalProgress } = await supabase
             .from('student_progress')
             .select('*', { count: 'exact', head: true })
@@ -47,7 +45,6 @@ export default function DashboardPage() {
             ? Math.round((completedCount || 0) * 100 / totalProgress)
             : 0
 
-          // 3. Horas capacitación — evita mismatch text vs uuid
           let trainingHours = 0
           const { data: completedRows } = await supabase
             .from('student_progress')
@@ -71,7 +68,6 @@ export default function DashboardPage() {
             }
           }
 
-          // 4. Registros recientes
           const { data: logs } = await supabase
             .from('profiles')
             .select('full_name, role, updated_at')
@@ -93,35 +89,55 @@ export default function DashboardPage() {
         }
 
       } else {
-        // Vista estudiante
+        // Vista estudiante — solo cursos con enrollment
         try {
           const { data: { session } } = await supabase.auth.getSession()
           if (!session) return
 
-          // Traemos progreso del estudiante
+          // 1. Enrollments del estudiante
+          const { data: enrollments } = await supabase
+            .from('enrollments')
+            .select('course_id')
+            .eq('profile_id', session.user.id)
+
+          if (!enrollments || enrollments.length === 0) {
+            setMyProgress([])
+            setStats(s => ({ ...s, loading: false }))
+            return
+          }
+
+          const enrolledCourseIds = enrollments.map((e: any) => String(e.course_id))
+
+          // 2. Progreso del estudiante
           const { data: progressRows } = await supabase
             .from('student_progress')
             .select('*')
             .eq('profile_id', session.user.id)
 
-          if (progressRows && progressRows.length > 0) {
-            // Traemos todos los cursos y hacemos el join manual
-            const { data: allCourses } = await supabase
-              .from('courses')
-              .select('id, title, duration_minutes, image_url')
+          // 3. Cursos enrollados
+          const { data: allCourses } = await supabase
+            .from('courses')
+            .select('id, title, duration_minutes, image_url')
 
-            const merged = progressRows.map((p: any) => ({
-              ...p,
-              courses: allCourses?.find(
-                (c: any) => String(c.id) === String(p.course_id)
-              ) || null
-            }))
+          const enrolledCourses = (allCourses || []).filter((c: any) =>
+            enrolledCourseIds.includes(String(c.id))
+          )
 
-            setMyProgress(merged)
-          } else {
-            setMyProgress([])
-          }
+          // 4. Merge curso + progreso
+          const merged = enrolledCourses.map((course: any) => {
+            const progress = (progressRows || []).find(
+              (p: any) => String(p.course_id) === String(course.id)
+            )
+            return {
+              course_id: course.id,
+              current_score: progress?.current_score || 0,
+              is_completed: progress?.is_completed || false,
+              completed_at: progress?.completed_at || null,
+              courses: course
+            }
+          })
 
+          setMyProgress(merged)
           setStats(s => ({ ...s, loading: false }))
 
         } catch (err) {
@@ -170,7 +186,7 @@ export default function DashboardPage() {
 
       {isAdmin ? (
         <>
-          {/* MÉTRICAS */}
+          {/* MÉTRICAS ADMIN */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
               { label: 'Colaboradores Activos', value: stats.activeUsers, icon: Users, color: 'text-blue-400' },
@@ -282,7 +298,8 @@ export default function DashboardPage() {
                   {myProgress.map((item, i) => {
                     const pct = item.is_completed ? 100 : Math.min(item.current_score || 0, 100)
                     return (
-                      <div key={i} className="bg-white/5 border border-white/10 p-6 rounded-3xl hover:border-[#00E5FF]/30 transition-all cursor-pointer">
+                      <div key={i} className="bg-white/5 border border-white/10 p-6 rounded-3xl hover:border-[#00E5FF]/30 transition-all cursor-pointer"
+                        onClick={() => window.location.href = `/dashboard/academia/${item.course_id}`}>
                         <p className="text-white text-sm font-black italic uppercase tracking-tight">
                           {item.courses?.title || 'Curso'}
                         </p>

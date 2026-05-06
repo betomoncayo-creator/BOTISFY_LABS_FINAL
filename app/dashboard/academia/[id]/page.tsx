@@ -6,7 +6,7 @@ import { jsPDF } from 'jspdf'
 import { 
   ChevronLeft, Video, FileCode, FileText, 
   Trash2, ArrowUp, ArrowDown, 
-  UploadCloud, RefreshCw, User, Edit3, Lock, Download, Square, CheckSquare, Plus, X
+  UploadCloud, RefreshCw, User, Edit3, Lock, Download, Square, CheckSquare, Plus, X, Users
 } from 'lucide-react'
 
 export default function CourseEditorPage() {
@@ -30,6 +30,11 @@ export default function CourseEditorPage() {
   
   const [courseData, setCourseData] = useState<any>(null)
   const [modules, setModules] = useState<any[]>([])
+
+  // VISIBILIDAD
+  const [allStudents, setAllStudents] = useState<any[]>([])
+  const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set())
+  const [savingEnrollment, setSavingEnrollment] = useState<string | null>(null)
 
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [certSettings, setCertSettings] = useState<any>({
@@ -63,6 +68,16 @@ export default function CourseEditorPage() {
           const realIsAdmin = profileRes.data.role?.toLowerCase() === 'admin'
           setIsAdmin(realIsAdmin)
           setIsStudentMode(!realIsAdmin)
+
+          // Si es admin, cargamos estudiantes y enrollments
+          if (realIsAdmin) {
+            const [studentsRes, enrollmentsRes] = await Promise.all([
+              supabase.from('profiles').select('id, full_name, email, role').eq('role', 'estudiante').order('full_name'),
+              supabase.from('enrollments').select('profile_id').eq('course_id', id)
+            ])
+            setAllStudents(studentsRes.data || [])
+            setEnrolledIds(new Set((enrollmentsRes.data || []).map((e: any) => e.profile_id)))
+          }
         }
 
         if (courseRes.data) {
@@ -94,6 +109,46 @@ export default function CourseEditorPage() {
   }, [id, router])
 
   const selectedModule = modules.find(m => m.id === selectedModId)
+
+  // TOGGLE ENROLLMENT
+  const toggleEnrollment = async (profileId: string) => {
+    setSavingEnrollment(profileId)
+    const supabase = createClient()
+    const isEnrolled = enrolledIds.has(profileId)
+
+    try {
+      if (isEnrolled) {
+        await supabase.from('enrollments')
+          .delete()
+          .eq('profile_id', profileId)
+          .eq('course_id', id)
+        setEnrolledIds(prev => { const next = new Set(prev); next.delete(profileId); return next })
+      } else {
+        await supabase.from('enrollments')
+          .insert({ profile_id: profileId, course_id: id })
+        setEnrolledIds(prev => new Set([...prev, profileId]))
+      }
+    } catch (err) {
+      console.error('Error toggling enrollment:', err)
+    } finally {
+      setSavingEnrollment(null)
+    }
+  }
+
+  const enrollAll = async () => {
+    const supabase = createClient()
+    const notEnrolled = allStudents.filter(s => !enrolledIds.has(s.id))
+    for (const student of notEnrolled) {
+      await supabase.from('enrollments').insert({ profile_id: student.id, course_id: id })
+    }
+    setEnrolledIds(new Set(allStudents.map(s => s.id)))
+  }
+
+  const unenrollAll = async () => {
+    const supabase = createClient()
+    await supabase.from('enrollments').delete().eq('course_id', id)
+    setEnrolledIds(new Set())
+  }
 
   const getEmbedUrl = (url: string) => {
     if (!url) return null
@@ -142,7 +197,6 @@ export default function CourseEditorPage() {
     setModules(prev => prev.map(m => m.id === selectedModId ? { ...m, [field]: value } : m))
   }
 
-  // 🎯 HELPERS PARA EDITAR QUIZ
   const updateQuestion = (qId: number, field: string, value: any) => {
     const updated = selectedModule.questions.map((q: any) =>
       q.id === qId ? { ...q, [field]: value } : q
@@ -154,7 +208,6 @@ export default function CourseEditorPage() {
     const updated = selectedModule.questions.map((q: any) => {
       if (q.id !== qId) return q
       const newOptions = [...q.options]
-      // Si la opción estaba en correctAnswers, actualizar también
       const wasCorrect = q.correctAnswers?.includes(newOptions[optIdx])
       newOptions[optIdx] = value
       const newCorrects = wasCorrect
@@ -200,7 +253,6 @@ export default function CourseEditorPage() {
     updateModule('questions', updated)
   }
 
-  // 🎯 CALIFICACIÓN + GUARDADO
   const runSimulation = async () => {
     if (!selectedModule?.questions) return
     const objectiveQs = selectedModule.questions.filter((q: any) => q.type !== 'open')
@@ -335,12 +387,94 @@ export default function CourseEditorPage() {
           }`}>
           2. Certificación {isStudentMode && !isUnlocked && <Lock size={10} />}
         </button>
+        {!isStudentMode && isAdmin && (
+          <button onClick={() => setActiveTab('visibilidad')}
+            className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+              activeTab === 'visibilidad' ? 'text-[#00E5FF] border-b-2 border-[#00E5FF]' : 'text-zinc-600'
+            }`}>
+            <Users size={12}/> 3. Visibilidad
+          </button>
+        )}
       </div>
 
-      {activeTab === 'modulos' ? (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
+      {/* TAB: VISIBILIDAD */}
+      {activeTab === 'visibilidad' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-white text-2xl font-black italic uppercase tracking-tighter">
+                Visibilidad del Curso
+              </h2>
+              <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest mt-1">
+                {enrolledIds.size} de {allStudents.length} estudiantes tienen acceso
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={unenrollAll}
+                className="px-5 py-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-[8px] font-black uppercase hover:bg-red-500/20 transition-all">
+                Quitar todos
+              </button>
+              <button onClick={enrollAll}
+                className="px-5 py-3 bg-[#00E5FF]/10 border border-[#00E5FF]/20 text-[#00E5FF] rounded-xl text-[8px] font-black uppercase hover:bg-[#00E5FF]/20 transition-all">
+                Dar acceso a todos
+              </button>
+            </div>
+          </div>
 
-          {/* LISTA MÓDULOS */}
+          {allStudents.length === 0 ? (
+            <div className="text-center py-20 text-zinc-600">
+              <Users size={40} className="mx-auto mb-4 opacity-20"/>
+              <p className="text-[9px] font-black uppercase tracking-widest">
+                No hay estudiantes registrados en el directorio
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {allStudents.map((student) => {
+                const isEnrolled = enrolledIds.has(student.id)
+                const isSaving = savingEnrollment === student.id
+                return (
+                  <div key={student.id}
+                    className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${
+                      isEnrolled ? 'bg-[#00E5FF]/5 border-[#00E5FF]/20' : 'bg-[#050505] border-white/5'
+                    }`}>
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm border transition-all ${
+                        isEnrolled ? 'bg-[#00E5FF]/20 border-[#00E5FF]/30 text-[#00E5FF]' : 'bg-white/5 border-white/10 text-zinc-500'
+                      }`}>
+                        {student.full_name?.[0]?.toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-white text-[11px] font-black uppercase tracking-tight">{student.full_name}</p>
+                        <p className="text-zinc-500 text-[9px]">{student.email}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => toggleEnrollment(student.id)}
+                      disabled={isSaving}
+                      className={`px-5 py-2 rounded-xl text-[8px] font-black uppercase transition-all flex items-center gap-2 ${
+                        isEnrolled
+                          ? 'bg-[#00E5FF] text-black hover:bg-[#00D4EE]'
+                          : 'bg-white/5 border border-white/10 text-zinc-400 hover:border-white/30 hover:text-white'
+                      } disabled:opacity-50`}>
+                      {isSaving ? (
+                        <RefreshCw size={12} className="animate-spin"/>
+                      ) : isEnrolled ? (
+                        <><CheckSquare size={12}/> Con acceso</>
+                      ) : (
+                        <><Square size={12}/> Sin acceso</>
+                      )}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'modulos' && (
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
           <div className="xl:col-span-4 space-y-4">
             <div className="space-y-3">
               {modules.map((mod, idx) => (
@@ -376,12 +510,9 @@ export default function CourseEditorPage() {
             )}
           </div>
 
-          {/* CONTENIDO MÓDULO */}
           <div className="xl:col-span-8">
             {selectedModule && (
               <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem] space-y-8 animate-in slide-in-from-right-4">
-
-                {/* TÍTULO MÓDULO */}
                 {!isStudentMode ? (
                   <input type="text" value={selectedModule.title}
                     onChange={(e) => updateModule('title', e.target.value)}
@@ -390,7 +521,6 @@ export default function CourseEditorPage() {
                   <h2 className="text-white text-3xl font-black italic uppercase">{selectedModule.title}</h2>
                 )}
 
-                {/* CONTENIDO NO-QUIZ */}
                 {selectedModule.type !== 'quiz' && !isStudentMode && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="relative">
@@ -406,16 +536,11 @@ export default function CourseEditorPage() {
                   </div>
                 )}
 
-                {/* RENDER CONTENIDO */}
                 <div className="bg-black rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl relative min-h-[400px] flex items-center justify-center">
                   {selectedModule.type === 'quiz' ? (
                     <div className="w-full p-8 space-y-8 overflow-y-auto max-h-[700px]">
-
-                      {/* MODO ADMIN — EDITOR DE QUIZ */}
                       {!isStudentMode ? (
                         <div className="space-y-8">
-
-                          {/* PUNTAJE TOTAL */}
                           <div className="flex items-center justify-between p-5 bg-white/5 rounded-2xl border border-white/10">
                             <div>
                               <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Puntaje Total</p>
@@ -425,15 +550,12 @@ export default function CourseEditorPage() {
                                 </span>
                               </p>
                             </div>
-                            <input
-                              type="number" min={1} max={1000}
+                            <input type="number" min={1} max={1000}
                               value={selectedModule.totalPoints || 10}
                               onChange={(e) => updateModule('totalPoints', Number(e.target.value))}
-                              className="w-24 text-center bg-black border border-[#00E5FF]/30 rounded-xl p-3 text-white text-2xl font-black outline-none focus:border-[#00E5FF]"
-                            />
+                              className="w-24 text-center bg-black border border-[#00E5FF]/30 rounded-xl p-3 text-white text-2xl font-black outline-none focus:border-[#00E5FF]" />
                           </div>
 
-                          {/* BOTONES AGREGAR PREGUNTA */}
                           <div className="flex gap-2">
                             {['simple', 'multiple', 'open'].map(t => (
                               <button key={t} onClick={() => updateModule('questions', [
@@ -445,46 +567,26 @@ export default function CourseEditorPage() {
                             ))}
                           </div>
 
-                          {/* LISTA DE PREGUNTAS — EDITABLES */}
                           <div className="space-y-6">
                             {(selectedModule.questions || []).map((q: any, qIdx: number) => (
                               <div key={q.id} className="bg-white/[0.03] border border-white/10 rounded-[2rem] p-6 space-y-5">
-
-                                {/* CABECERA PREGUNTA */}
                                 <div className="flex items-start justify-between gap-4">
                                   <div className="flex-1 space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[#00E5FF] text-[8px] font-black uppercase tracking-widest">
-                                        {qIdx + 1}. {q.type === 'simple' ? 'Opción simple' : q.type === 'multiple' ? 'Múltiple' : 'Abierta'}
-                                      </span>
-                                    </div>
-                                    <input
-                                      type="text" value={q.text}
+                                    <span className="text-[#00E5FF] text-[8px] font-black uppercase tracking-widest">
+                                      {qIdx + 1}. {q.type === 'simple' ? 'Opción simple' : q.type === 'multiple' ? 'Múltiple' : 'Abierta'}
+                                    </span>
+                                    <input type="text" value={q.text}
                                       onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
                                       className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white text-sm font-bold outline-none focus:border-[#00E5FF]/50 transition-all"
-                                      placeholder="Escribe la pregunta..."
-                                    />
+                                      placeholder="Escribe la pregunta..." />
                                   </div>
-                                  {/* CONTROLES MOVER/ELIMINAR */}
                                   <div className="flex flex-col gap-1 pt-6">
-                                    <button onClick={() => updateModule('questions', moveItem(selectedModule.questions, qIdx, 'up'))}
-                                      disabled={qIdx === 0}
-                                      className="p-1.5 bg-white/5 rounded-lg hover:bg-white/10 disabled:opacity-20 transition-all">
-                                      <ArrowUp size={12}/>
-                                    </button>
-                                    <button onClick={() => updateModule('questions', moveItem(selectedModule.questions, qIdx, 'down'))}
-                                      disabled={qIdx === selectedModule.questions.length - 1}
-                                      className="p-1.5 bg-white/5 rounded-lg hover:bg-white/10 disabled:opacity-20 transition-all">
-                                      <ArrowDown size={12}/>
-                                    </button>
-                                    <button onClick={() => updateModule('questions', selectedModule.questions.filter((x: any) => x.id !== q.id))}
-                                      className="p-1.5 bg-red-500/10 rounded-lg hover:bg-red-500/20 text-red-500 transition-all">
-                                      <Trash2 size={12}/>
-                                    </button>
+                                    <button onClick={() => updateModule('questions', moveItem(selectedModule.questions, qIdx, 'up'))} disabled={qIdx === 0} className="p-1.5 bg-white/5 rounded-lg hover:bg-white/10 disabled:opacity-20 transition-all"><ArrowUp size={12}/></button>
+                                    <button onClick={() => updateModule('questions', moveItem(selectedModule.questions, qIdx, 'down'))} disabled={qIdx === selectedModule.questions.length - 1} className="p-1.5 bg-white/5 rounded-lg hover:bg-white/10 disabled:opacity-20 transition-all"><ArrowDown size={12}/></button>
+                                    <button onClick={() => updateModule('questions', selectedModule.questions.filter((x: any) => x.id !== q.id))} className="p-1.5 bg-red-500/10 rounded-lg hover:bg-red-500/20 text-red-500 transition-all"><Trash2 size={12}/></button>
                                   </div>
                                 </div>
 
-                                {/* OPCIONES EDITABLES */}
                                 {q.type !== 'open' && (
                                   <div className="space-y-3 ml-2">
                                     <p className="text-zinc-600 text-[7px] font-black uppercase tracking-widest">
@@ -493,44 +595,29 @@ export default function CourseEditorPage() {
                                     {(q.options || []).map((opt: string, optIdx: number) => {
                                       const isCorrect = (q.correctAnswers || []).includes(opt)
                                       return (
-                                        <div key={optIdx} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                                          isCorrect ? 'bg-green-500/10 border-green-500/30' : 'bg-white/[0.02] border-white/10'
-                                        }`}>
-                                          {/* MARCAR CORRECTA */}
+                                        <div key={optIdx} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${isCorrect ? 'bg-green-500/10 border-green-500/30' : 'bg-white/[0.02] border-white/10'}`}>
                                           <button onClick={() => toggleCorrect(q.id, opt, q.type === 'multiple')}
-                                            className={`flex-shrink-0 w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${
-                                              isCorrect ? 'bg-green-500 border-green-500 text-black' : 'border-white/20 text-zinc-600 hover:border-green-500/50'
-                                            }`}>
+                                            className={`flex-shrink-0 w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${isCorrect ? 'bg-green-500 border-green-500 text-black' : 'border-white/20 text-zinc-600 hover:border-green-500/50'}`}>
                                             {isCorrect ? <CheckSquare size={14}/> : <Square size={14}/>}
                                           </button>
-                                          {/* EDITAR TEXTO OPCIÓN */}
                                           <input type="text" value={opt}
                                             onChange={(e) => updateOption(q.id, optIdx, e.target.value)}
                                             className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-zinc-600"
-                                            placeholder={`Opción ${optIdx + 1}`}
-                                          />
-                                          {/* ELIMINAR OPCIÓN */}
+                                            placeholder={`Opción ${optIdx + 1}`} />
                                           {(q.options || []).length > 2 && (
-                                            <button onClick={() => removeOption(q.id, optIdx)}
-                                              className="flex-shrink-0 p-1 text-zinc-700 hover:text-red-500 transition-all">
-                                              <X size={12}/>
-                                            </button>
+                                            <button onClick={() => removeOption(q.id, optIdx)} className="flex-shrink-0 p-1 text-zinc-700 hover:text-red-500 transition-all"><X size={12}/></button>
                                           )}
                                         </div>
                                       )
                                     })}
-                                    {/* AGREGAR OPCIÓN */}
                                     <button onClick={() => addOption(q.id)}
                                       className="w-full py-2 border border-dashed border-white/10 rounded-xl text-zinc-600 text-[8px] font-black uppercase hover:border-[#00E5FF]/30 hover:text-[#00E5FF] transition-all flex items-center justify-center gap-2">
                                       <Plus size={12}/> Agregar opción
                                     </button>
                                   </div>
                                 )}
-
                                 {q.type === 'open' && (
-                                  <p className="text-zinc-600 text-[8px] font-bold uppercase ml-2">
-                                    Pregunta abierta — el estudiante escribe su respuesta
-                                  </p>
+                                  <p className="text-zinc-600 text-[8px] font-bold uppercase ml-2">Pregunta abierta — el estudiante escribe su respuesta</p>
                                 )}
                               </div>
                             ))}
@@ -539,21 +626,15 @@ export default function CourseEditorPage() {
                           {(selectedModule.questions || []).length === 0 && (
                             <div className="text-center py-12 text-zinc-700">
                               <CheckSquare size={40} className="mx-auto mb-4 opacity-20"/>
-                              <p className="text-[9px] font-black uppercase tracking-widest">
-                                Sin preguntas — agrega con los botones de arriba
-                              </p>
+                              <p className="text-[9px] font-black uppercase tracking-widest">Sin preguntas — agrega con los botones de arriba</p>
                             </div>
                           )}
                         </div>
-
                       ) : (
-                        /* MODO ESTUDIANTE — RESOLVER QUIZ */
                         <div className="space-y-10">
                           {simulationResult ? (
                             <div className="text-center p-12 space-y-4">
-                              <p className="text-6xl font-black italic">
-                                {simulationResult.score}/{selectedModule.totalPoints || 10}
-                              </p>
+                              <p className="text-6xl font-black italic">{simulationResult.score}/{selectedModule.totalPoints || 10}</p>
                               <p className={`font-black text-lg ${simulationResult.passed ? 'text-green-500' : 'text-red-500'}`}>
                                 {simulationResult.passed ? '✅ APROBADO' : '❌ FALLIDO'}
                               </p>
@@ -584,19 +665,15 @@ export default function CourseEditorPage() {
                                             ? (list.includes(opt) ? list.filter((x: any) => x !== opt) : [...list, opt])
                                             : [opt]
                                           setUserAnswers({...userAnswers, [q.id]: next})
-                                        }} className={`p-5 rounded-2xl border text-left text-[11px] flex items-center justify-between transition-all ${
-                                          active ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF]' : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'
-                                        }`}>
-                                          {opt}
-                                          {active ? <CheckSquare size={18}/> : <Square size={18} className="opacity-20"/>}
+                                        }} className={`p-5 rounded-2xl border text-left text-[11px] flex items-center justify-between transition-all ${active ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF]' : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'}`}>
+                                          {opt} {active ? <CheckSquare size={18}/> : <Square size={18} className="opacity-20"/>}
                                         </button>
                                       )
                                     })}
                                   </div>
                                 </div>
                               ))}
-                              <button onClick={runSimulation}
-                                className="w-full bg-[#00E5FF] text-black py-7 rounded-[2rem] font-black uppercase text-[10px]">
+                              <button onClick={runSimulation} className="w-full bg-[#00E5FF] text-black py-7 rounded-[2rem] font-black uppercase text-[10px]">
                                 Calificar Examen
                               </button>
                             </>
@@ -620,8 +697,9 @@ export default function CourseEditorPage() {
             )}
           </div>
         </div>
-      ) : (
-        /* CERTIFICACIÓN */
+      )}
+
+      {activeTab === 'certificado' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
           <div className="xl:col-span-8">
             <div ref={containerRef} className="relative w-full aspect-[1.414/1] bg-white rounded-3xl shadow-2xl overflow-hidden border border-white/10">
@@ -659,8 +737,7 @@ export default function CourseEditorPage() {
                 ))}
               </div>
             ) : (
-              <button onClick={generatePDF}
-                className="w-full bg-[#00E5FF] text-black py-6 rounded-3xl font-black text-xs uppercase flex items-center justify-center gap-3">
+              <button onClick={generatePDF} className="w-full bg-[#00E5FF] text-black py-6 rounded-3xl font-black text-xs uppercase flex items-center justify-center gap-3">
                 <Download size={20}/> Descargar Diploma
               </button>
             )}
