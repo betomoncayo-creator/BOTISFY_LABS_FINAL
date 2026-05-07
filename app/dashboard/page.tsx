@@ -1,11 +1,8 @@
 'use client'
-import { useContext, useEffect, useState } from 'react'
-import { UserContext } from '../../lib/context'
+import { useState, useEffect } from 'react'
+import db from '../../lib/database'
 import { createClient } from '../../lib/supabase'
-import { 
-  Users, Zap, Clock, Award, BookOpen, Activity, 
-  UserPlus, BookMarked, Shield, RefreshCw 
-} from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 export default function DashboardPage() {
   const { profile } = useContext(UserContext)
