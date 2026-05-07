@@ -23,7 +23,7 @@ export default function DashboardPage() {
   const isAdmin = userRole === 'admin'
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    async function fetchDashboardData() {
       const supabase = createClient()
 
       if (isAdmin) {
@@ -89,10 +89,12 @@ export default function DashboardPage() {
         }
 
       } else {
+        // Vista estudiante — solo cursos con enrollment
         try {
           const { data: { session } } = await supabase.auth.getSession()
           if (!session) return
 
+          // 1. Enrollments del estudiante
           const { data: enrollments } = await supabase
             .from('enrollments')
             .select('course_id')
@@ -106,11 +108,13 @@ export default function DashboardPage() {
 
           const enrolledCourseIds = enrollments.map((e: any) => String(e.course_id))
 
+          // 2. Progreso del estudiante
           const { data: progressRows } = await supabase
             .from('student_progress')
             .select('*')
             .eq('profile_id', session.user.id)
 
+          // 3. Cursos enrollados
           const { data: allCourses } = await supabase
             .from('courses')
             .select('id, title, duration_minutes, image_url')
@@ -119,6 +123,7 @@ export default function DashboardPage() {
             enrolledCourseIds.includes(String(c.id))
           )
 
+          // 4. Merge curso + progreso
           const merged = enrolledCourses.map((course: any) => {
             const progress = (progressRows || []).find(
               (p: any) => String(p.course_id) === String(course.id)
@@ -164,15 +169,15 @@ export default function DashboardPage() {
         </div>
         <div className="relative z-10 bg-white/5 border border-white/10 px-8 py-6 rounded-[2rem] flex items-center gap-4 backdrop-blur-md self-start md:self-center">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
-            isAdmin 
-              ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' 
-              : 'bg-green-500/10 border-green-500/20 text-green-400'
+            isAdmin
+              ? 'bg-[#00E5FF]/10 border-[#00E5FF]/20 text-[#00E5FF]'
+              : 'bg-purple-500/10 border-purple-500/20 text-purple-400'
           }`}>
-            <Shield size={18} />
+            <Shield size={20} className={isAdmin ? 'animate-pulse' : ''} />
           </div>
           <div>
-            <p className="text-zinc-600 text-[8px] font-bold uppercase tracking-widest">Rol</p>
-            <p className="text-white text-[11px] font-black uppercase tracking-tighter">
+            <p className="text-zinc-500 text-[8px] font-black uppercase tracking-widest">Nivel de Acceso</p>
+            <p className="text-white text-sm font-black uppercase tracking-tighter italic">
               {isAdmin ? 'Admin' : 'Estudiante'}
             </p>
           </div>

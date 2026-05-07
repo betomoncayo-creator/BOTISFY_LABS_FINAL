@@ -25,22 +25,53 @@ export default function AcademiaPage() {
       const supabase = createClient()
       
       const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        const { data: userData } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .single()
-        if (userData) setIsAdmin(userData.role?.toLowerCase() === 'admin')
+      if (!session) {
+        router.push('/login')
+        return
+      }
+  
+      // 1. Obtener rol del usuario
+      const { data: userData } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single()
+      
+      const realIsAdmin = userData?.role?.toLowerCase() === 'admin'
+      setIsAdmin(realIsAdmin)
+  
+      // 2. Filtrar cursos según rol
+      let coursesData = []
+      
+      if (realIsAdmin) {
+        // ADMIN: Ver TODOS los cursos
+        const { data } = await supabase
+          .from('courses')
+          .select('*')
+          .order('created_at', { ascending: false })
+        coursesData = data || []
+      } else {
+        // ESTUDIANTE: Ver solo cursos donde está enrolado
+        const { data: enrolledCourseIds } = await supabase
+          .from('enrollments')
+          .select('course_id')
+          .eq('profile_id', session.user.id)
+        
+        if (enrolledCourseIds && enrolledCourseIds.length > 0) {
+          const courseIds = enrolledCourseIds.map((e: any) => e.course_id)
+          const { data } = await supabase
+            .from('courses')
+            .select('*')
+            .in('id', courseIds)
+            .order('created_at', { ascending: false })
+          coursesData = data || []
+        }
       }
       
-      const { data } = await supabase
-        .from('courses')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (data) setCourses(data)
+      setCourses(coursesData)
       setLoading(false)
     }
+    
     fetchCourses()
   }, [])
 
