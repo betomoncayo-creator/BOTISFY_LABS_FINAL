@@ -116,20 +116,53 @@ export default function CourseEditorPage() {
     const supabase = createClient()
     const isEnrolled = enrolledIds.has(profileId)
 
+    console.log('🔍 DEBUG: Intento de toggle enrollment')
+    console.log('   profileId:', profileId, 'tipo:', typeof profileId)
+    console.log('   course_id (id):', id, 'tipo:', typeof id)
+    console.log('   isEnrolled:', isEnrolled)
+
     try {
       if (isEnrolled) {
-        await supabase.from('enrollments')
+        console.log('🗑️  ELIMINANDO enrollment...')
+        const { error, data } = await supabase.from('enrollments')
           .delete()
           .eq('profile_id', profileId)
           .eq('course_id', id)
+        
+        console.log('   Respuesta delete:', { error, data })
+        
+        if (error) {
+          console.error('❌ Error al quitar acceso:', error)
+          alert('❌ Error al quitar acceso:\n' + JSON.stringify(error, null, 2))
+          return
+        }
+        
         setEnrolledIds(prev => { const next = new Set(prev); next.delete(profileId); return next })
+        alert('✅ Acceso ELIMINADO - Se guardó en Supabase')
       } else {
-        await supabase.from('enrollments')
+        console.log('➕ INSERTANDO nuevo enrollment...')
+        console.log('   Datos a insertar:', { profile_id: profileId, course_id: id })
+        
+        const { error, data } = await supabase.from('enrollments')
           .insert({ profile_id: profileId, course_id: id })
+        
+        console.log('   Respuesta insert:', { error, data })
+        
+        if (error) {
+          console.error('❌ Error al dar acceso:', error)
+          console.error('   Código de error:', error.code)
+          console.error('   Mensaje:', error.message)
+          console.error('   Detalles:', error.details)
+          alert('❌ Error al dar acceso:\n' + error.message + '\n\nCódigo: ' + error.code)
+          return
+        }
+        
         setEnrolledIds(prev => new Set([...prev, profileId]))
+        alert('✅ Acceso OTORGADO - Se guardó en Supabase')
       }
     } catch (err) {
-      console.error('Error toggling enrollment:', err)
+      console.error('❌ Error inesperado en toggleEnrollment:', err)
+      alert('❌ Error inesperado: ' + (err instanceof Error ? err.message : 'Desconocido'))
     } finally {
       setSavingEnrollment(null)
     }
@@ -417,6 +450,10 @@ export default function CourseEditorPage() {
               <button onClick={enrollAll}
                 className="px-5 py-3 bg-[#00E5FF]/10 border border-[#00E5FF]/20 text-[#00E5FF] rounded-xl text-[8px] font-black uppercase hover:bg-[#00E5FF]/20 transition-all">
                 Dar acceso a todos
+              </button>
+              <button onClick={() => alert('✅ Cambios de visibilidad guardados automáticamente')}
+                className="px-6 py-3 bg-green-500 text-black rounded-xl text-[8px] font-black uppercase hover:bg-green-600 transition-all">
+                ✓ GUARDADO
               </button>
             </div>
           </div>
