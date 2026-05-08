@@ -1,13 +1,22 @@
+// app/dashboard/usuarios/page.tsx
+// CAPA 2 DE SEGURIDAD: Guard de rol en cliente — redirige si no es admin.
+// Las API calls incluyen el token de sesión para que la Capa 1 (servidor) también valide.
+
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useContext } from 'react'
+import { useRouter } from 'next/navigation'
+import { UserContext } from '../../../lib/context'
 import db from '../../../lib/database'
-import { 
+import {
   UserPlus, Search, Trash2, FileSpreadsheet, Mail,
-  ShieldCheck, X, Key, RefreshCcw, Copy, Eye, EyeOff, Check
+  ShieldCheck, X, Key, RefreshCcw, Copy, Eye, EyeOff, Check, Lock
 } from 'lucide-react'
 import BulkUploadModal from '../../../components/BulkUploadModal'
 
 export default function UsuariosPage() {
+  const { profile, loadingProfile } = useContext(UserContext)
+  const router = useRouter()
+
   const [usuarios, setUsuarios] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -27,6 +36,25 @@ export default function UsuariosPage() {
   const [creating, setCreating] = useState(false)
   const [createResult, setCreateResult] = useState<{ success: boolean; message: string } | null>(null)
 
+  // ─── GUARD DE ROL: solo admins ──────────────────────────────────────────────
+  useEffect(() => {
+    if (loadingProfile) return
+    if (!profile) { router.replace('/login'); return }
+    if (profile.role?.toLowerCase() !== 'admin') {
+      router.replace('/dashboard')
+    }
+  }, [profile, loadingProfile, router])
+
+  // ─── HELPER: obtener token para incluir en headers ──────────────────────────
+  const getAuthHeaders = async () => {
+    const session = await db.getSession()
+    if (!session?.access_token) throw new Error('Sin sesión')
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`
+    }
+  }
+
   const generatePassword = () => {
     const rand = Math.random().toString(36).substring(2, 8).toUpperCase()
     return `BTF-${rand}-2026`
@@ -36,7 +64,6 @@ export default function UsuariosPage() {
     setLoading(true)
     try {
       const data = await db.getAllProfiles()
-      // getAllProfiles ya ordena por full_name — reordenamos por created_at desc si queremos
       setUsuarios(data)
     } catch (err) {
       console.error('Error fetching usuarios:', err)
@@ -45,7 +72,9 @@ export default function UsuariosPage() {
     }
   }, [])
 
-  useEffect(() => { fetchUsuarios() }, [fetchUsuarios])
+  useEffect(() => {
+    if (profile?.role?.toLowerCase() === 'admin') fetchUsuarios()
+  }, [profile, fetchUsuarios])
 
   const openManualModal = () => {
     setNewUserName(''); setNewUserEmail(''); setNewUserRole('estudiante')
@@ -60,9 +89,10 @@ export default function UsuariosPage() {
     }
     setCreating(true); setCreateResult(null)
     try {
+      const headers = await getAuthHeaders()
       const res = await fetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           full_name: newUserName.trim(),
           email: newUserEmail.trim().toLowerCase(),
@@ -75,7 +105,7 @@ export default function UsuariosPage() {
         setCreateResult({ success: false, message: json.error || 'Error al crear usuario' })
         return
       }
-      setCreateResult({ success: true, message: `✅ Usuario creado. Contraseña temporal: ${newUserPassword}` })
+      setCreateResult({ success: true, message: `✅ Usuario creado. Contraseña: ${newUserPassword}` })
       fetchUsuarios()
     } catch (err: any) {
       setCreateResult({ success: false, message: err.message || 'Error inesperado' })
@@ -94,15 +124,18 @@ export default function UsuariosPage() {
   const handleResetProtocol = async () => {
     if (!selectedUser) return
     try {
-      // Reset de contraseña — usa la API route que tiene SERVICE_ROLE_KEY
+      const headers = await getAuthHeaders()
       const res = await fetch('/api/users/reset', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: selectedUser.id, email: selectedUser.email })
+        headers,
+        body: JSON.stringify({ userId: selectedUser.id, newPassword: tempToken })
       })
       if (res.ok) {
-        alert('Enviado al correo del nodo.')
+        alert('Contraseña actualizada. Token enviado al operador.')
         setIsKeyModalOpen(false)
+      } else {
+        const json = await res.json()
+        alert('Error: ' + json.error)
       }
     } catch (err) {
       console.error('Error resetting password:', err)
@@ -112,7 +145,8 @@ export default function UsuariosPage() {
   const deleteUsuario = async (id: string) => {
     if (!confirm('¿Dar de baja a este usuario?')) return
     try {
-      const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' })
+      const headers = await getAuthHeaders()
+      const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE', headers })
       const json = await res.json()
       if (json.success) fetchUsuarios()
       else alert('Error: ' + json.error)
@@ -125,6 +159,10 @@ export default function UsuariosPage() {
     user.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email?.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  // Mostrar nada mientras verifica el rol
+  if (loadingProfile) return null
+  if (profile?.role?.toLowerCase() !== 'admin') return null
 
   return (
     <div className="space-y-8 animate-in fade-in duration-1000">
@@ -218,9 +256,7 @@ export default function UsuariosPage() {
             </button>
             <div>
               <h2 className="text-white text-2xl font-black uppercase italic tracking-tighter">Nuevo Acceso</h2>
-              <p className="text-zinc-600 text-[8px] font-bold uppercase tracking-widest mt-1">
-                Se creará el usuario en Auth + Directorio
-              </p>
+              <p className="text-zinc-600 text-[8px] font-bold uppercase tracking-widest mt-1">Se creará en Auth + Directorio</p>
             </div>
             <div className="space-y-4">
               <div className="space-y-2">
@@ -260,7 +296,7 @@ export default function UsuariosPage() {
                     {showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}
                   </button>
                 </div>
-                <button onClick={() => { navigator.clipboard.writeText(newUserPassword) }}
+                <button onClick={() => navigator.clipboard.writeText(newUserPassword)}
                   className="flex items-center gap-2 text-zinc-500 text-[8px] font-bold uppercase hover:text-white transition-all">
                   <Copy size={10}/> Copiar contraseña
                 </button>
@@ -310,7 +346,7 @@ export default function UsuariosPage() {
             </div>
             <div className="space-y-6">
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
-                <p className="text-zinc-500 text-[8px] font-bold uppercase tracking-[0.3em] mb-3">Token de Seguridad Temporal</p>
+                <p className="text-zinc-500 text-[8px] font-bold uppercase tracking-[0.3em] mb-3">Nueva Contraseña Temporal</p>
                 <code className="text-[#00E5FF] text-xl font-black tracking-[0.2em]">{tempToken}</code>
                 <div className="flex justify-center gap-4 mt-6">
                   <button onClick={() => navigator.clipboard.writeText(tempToken)} className="p-3 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all">
@@ -322,8 +358,8 @@ export default function UsuariosPage() {
                 </div>
               </div>
               <button onClick={handleResetProtocol}
-                className="w-full py-5 bg-[#00E5FF] text-black font-black uppercase text-[10px] tracking-[0.3em] rounded-2xl transition-all">
-                Enviar Link de Reseteo
+                className="w-full py-5 bg-[#00E5FF] text-black font-black uppercase text-[10px] tracking-[0.3em] rounded-2xl transition-all flex items-center justify-center gap-2">
+                <Lock size={16}/> Aplicar Nueva Contraseña
               </button>
             </div>
           </div>
