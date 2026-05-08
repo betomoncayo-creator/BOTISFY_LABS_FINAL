@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 import { useState, useContext } from 'react'
 import { UserContext } from '../../../components/UserContext'
 import { createClient } from '../../../lib/supabase'
