@@ -1,13 +1,11 @@
 'use client'
 import { useState } from 'react'
-import { X, Upload, Loader2, CheckCircle, AlertTriangle } from 'lucide-react'
-import { createClient } from '@/lib/supabase'
+import { X, Upload, Loader2 } from 'lucide-react'
 
 export default function BulkUploadModal({ onClose, onSuccess }: any) {
   const [file, setFile] = useState<File | null>(null)
   const [status, setStatus] = useState<'idle' | 'processing' | 'done'>('idle')
   const [logs, setLogs] = useState<string[]>([])
-  const supabase = createClient()
 
   const handleProcess = async () => {
     if (!file) return
@@ -18,23 +16,30 @@ export default function BulkUploadModal({ onClose, onSuccess }: any) {
     reader.onload = async (e) => {
       const text = e.target?.result as string
       const rows = text.split('\n').map(row => row.split(',').map(cell => cell.trim()))
-      
-      // Validamos cabeceras (opcional)
       const data = rows.slice(1).filter(row => row.length >= 2 && row[1] !== '')
       let successCount = 0
 
       for (const [name, email, role] of data) {
-        setLogs(prev => [...prev, `Sincronizando: ${email}...` ])
-        
-        // Insertamos en el Directorio (profiles)[cite: 2]
-        const { error } = await supabase.from('profiles').insert({
-          full_name: name,
-          email: email,
-          role: role || 'estudiante'
-        })
-
-        if (!error) successCount++
-        else setLogs(prev => [...prev, `❌ Error en ${email}: ${error.message}`])
+        setLogs(prev => [...prev, `Sincronizando: ${email}...`])
+        try {
+          // Carga masiva va por la API route (tiene SERVICE_ROLE_KEY para crear en auth + profiles)
+          const res = await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              full_name: name,
+              email: email,
+              role: role || 'estudiante',
+              // Contraseña temporal generada automáticamente
+              password: `BTF-${Math.random().toString(36).substring(2, 8).toUpperCase()}-2026`
+            })
+          })
+          const json = await res.json()
+          if (json.success) successCount++
+          else setLogs(prev => [...prev, `❌ Error en ${email}: ${json.error}`])
+        } catch (err: any) {
+          setLogs(prev => [...prev, `❌ Error en ${email}: ${err.message}`])
+        }
       }
 
       setLogs(prev => [...prev, `✅ Protocolo finalizado. ${successCount} registros nuevos.`])
@@ -49,7 +54,7 @@ export default function BulkUploadModal({ onClose, onSuccess }: any) {
       <div className="bg-[#080808] border border-white/10 w-full max-w-xl rounded-[3rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
         <div className="p-10">
           <div className="flex justify-between items-center mb-8">
-            <h2 className="text-white text-2xl font-black uppercase italic italic tracking-tighter">Nodo de Importación</h2>
+            <h2 className="text-white text-2xl font-black uppercase italic tracking-tighter">Nodo de Importación</h2>
             <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors"><X size={24}/></button>
           </div>
 
@@ -60,7 +65,10 @@ export default function BulkUploadModal({ onClose, onSuccess }: any) {
                 <Upload className="text-[#00E5FF] mb-4 group-hover:scale-110 transition-transform" size={48} />
                 <p className="text-white text-sm font-bold uppercase tracking-widest">{file ? file.name : 'Subir archivo .CSV'}</p>
               </label>
-              <button 
+              <p className="text-zinc-600 text-[9px] font-bold uppercase tracking-widest text-center">
+                Formato: nombre, email, rol (opcional)
+              </p>
+              <button
                 onClick={handleProcess}
                 disabled={!file}
                 className="w-full py-5 bg-[#00E5FF] text-black font-black uppercase text-[11px] tracking-[0.3em] rounded-2xl disabled:opacity-20 transition-all hover:shadow-[0_0_20px_rgba(0,229,255,0.3)]"

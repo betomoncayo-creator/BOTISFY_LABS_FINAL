@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '../../../lib/supabase'
+import db from '../../../lib/database'
 import { 
   UserPlus, Search, Trash2, FileSpreadsheet, Mail,
   ShieldCheck, X, Key, RefreshCcw, Copy, Eye, EyeOff, Check
@@ -11,15 +11,14 @@ export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  
+
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
   const [isManualModalOpen, setIsManualModalOpen] = useState(false)
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false)
-  
+
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [tempToken, setTempToken] = useState('')
 
-  // Nuevo usuario
   const [newUserName, setNewUserName] = useState('')
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserRole, setNewUserRole] = useState('estudiante')
@@ -36,12 +35,9 @@ export default function UsuariosPage() {
   const fetchUsuarios = useCallback(async () => {
     setLoading(true)
     try {
-      const supabase = createClient()
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (data) setUsuarios(data)
+      const data = await db.getAllProfiles()
+      // getAllProfiles ya ordena por full_name — reordenamos por created_at desc si queremos
+      setUsuarios(data)
     } catch (err) {
       console.error('Error fetching usuarios:', err)
     } finally {
@@ -49,18 +45,12 @@ export default function UsuariosPage() {
     }
   }, [])
 
-  useEffect(() => {
-    fetchUsuarios()
-  }, [fetchUsuarios])
+  useEffect(() => { fetchUsuarios() }, [fetchUsuarios])
 
   const openManualModal = () => {
-    setNewUserName('')
-    setNewUserEmail('')
-    setNewUserRole('estudiante')
-    setNewUserPassword(generatePassword())
-    setShowPassword(false)
-    setCreateResult(null)
-    setIsManualModalOpen(true)
+    setNewUserName(''); setNewUserEmail(''); setNewUserRole('estudiante')
+    setNewUserPassword(generatePassword()); setShowPassword(false)
+    setCreateResult(null); setIsManualModalOpen(true)
   }
 
   const handleCreateUser = async () => {
@@ -68,10 +58,7 @@ export default function UsuariosPage() {
       setCreateResult({ success: false, message: 'Todos los campos son requeridos' })
       return
     }
-
-    setCreating(true)
-    setCreateResult(null)
-
+    setCreating(true); setCreateResult(null)
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
@@ -83,20 +70,13 @@ export default function UsuariosPage() {
           role: newUserRole
         })
       })
-
       const json = await res.json()
-
       if (!res.ok || !json.success) {
         setCreateResult({ success: false, message: json.error || 'Error al crear usuario' })
         return
       }
-
-      setCreateResult({ 
-        success: true, 
-        message: `✅ Usuario creado. Contraseña temporal: ${newUserPassword}` 
-      })
+      setCreateResult({ success: true, message: `✅ Usuario creado. Contraseña temporal: ${newUserPassword}` })
       fetchUsuarios()
-
     } catch (err: any) {
       setCreateResult({ success: false, message: err.message || 'Error inesperado' })
     } finally {
@@ -114,11 +94,13 @@ export default function UsuariosPage() {
   const handleResetProtocol = async () => {
     if (!selectedUser) return
     try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.resetPasswordForEmail(selectedUser.email, {
-        redirectTo: `${window.location.origin}/auth/callback`,
+      // Reset de contraseña — usa la API route que tiene SERVICE_ROLE_KEY
+      const res = await fetch('/api/users/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: selectedUser.id, email: selectedUser.email })
       })
-      if (!error) {
+      if (res.ok) {
         alert('Enviado al correo del nodo.')
         setIsKeyModalOpen(false)
       }
@@ -216,16 +198,10 @@ export default function UsuariosPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => openKeyModal(user)}
-                className="p-3 text-zinc-600 hover:text-[#00E5FF] hover:bg-[#00E5FF]/5 rounded-xl transition-all"
-              >
+              <button onClick={() => openKeyModal(user)} className="p-3 text-zinc-600 hover:text-[#00E5FF] hover:bg-[#00E5FF]/5 rounded-xl transition-all">
                 <Key size={18} />
               </button>
-              <button
-                onClick={() => deleteUsuario(user.id)}
-                className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all"
-              >
+              <button onClick={() => deleteUsuario(user.id)} className="p-3 text-zinc-600 hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all">
                 <Trash2 size={18} />
               </button>
             </div>
@@ -240,82 +216,56 @@ export default function UsuariosPage() {
             <button onClick={() => setIsManualModalOpen(false)} className="absolute top-8 right-8 text-zinc-500 hover:text-white transition-colors">
               <X size={20} />
             </button>
-
             <div>
               <h2 className="text-white text-2xl font-black uppercase italic tracking-tighter">Nuevo Acceso</h2>
               <p className="text-zinc-600 text-[8px] font-bold uppercase tracking-widest mt-1">
                 Se creará el usuario en Auth + Directorio
               </p>
             </div>
-
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-zinc-400 text-[8px] font-black uppercase">Nombre Completo</label>
-                <input
-                  type="text"
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
+                <input type="text" value={newUserName} onChange={(e) => setNewUserName(e.target.value)}
                   placeholder="Ej: Juan Pérez"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all"
-                />
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all" />
               </div>
-
               <div className="space-y-2">
                 <label className="text-zinc-400 text-[8px] font-black uppercase">Email</label>
-                <input
-                  type="email"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
+                <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)}
                   placeholder="email@empresa.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all"
-                />
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all" />
               </div>
-
               <div className="space-y-2">
                 <label className="text-zinc-400 text-[8px] font-black uppercase">Rol</label>
-                <select
-                  value={newUserRole}
-                  onChange={(e) => setNewUserRole(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all"
-                >
+                <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all">
                   <option value="estudiante">Estudiante</option>
                   <option value="admin">Administrador</option>
                 </select>
               </div>
-
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <label className="text-zinc-400 text-[8px] font-black uppercase">Contraseña Temporal</label>
-                  <button
-                    onClick={() => setNewUserPassword(generatePassword())}
-                    className="text-[#00E5FF] text-[8px] font-black uppercase flex items-center gap-1 hover:opacity-70 transition-all"
-                  >
+                  <button onClick={() => setNewUserPassword(generatePassword())}
+                    className="text-[#00E5FF] text-[8px] font-black uppercase flex items-center gap-1 hover:opacity-70 transition-all">
                     <RefreshCcw size={10} /> Regenerar
                   </button>
                 </div>
                 <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={newUserPassword}
+                  <input type={showPassword ? 'text' : 'password'} value={newUserPassword}
                     onChange={(e) => setNewUserPassword(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm font-mono outline-none focus:border-[#00E5FF]/50 transition-all pr-12"
-                  />
-                  <button
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-all"
-                  >
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm font-mono outline-none focus:border-[#00E5FF]/50 transition-all pr-12" />
+                  <button onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-all">
                     {showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}
                   </button>
                 </div>
-                <button
-                  onClick={() => { navigator.clipboard.writeText(newUserPassword) }}
-                  className="flex items-center gap-2 text-zinc-500 text-[8px] font-bold uppercase hover:text-white transition-all"
-                >
+                <button onClick={() => { navigator.clipboard.writeText(newUserPassword) }}
+                  className="flex items-center gap-2 text-zinc-500 text-[8px] font-bold uppercase hover:text-white transition-all">
                   <Copy size={10}/> Copiar contraseña
                 </button>
               </div>
             </div>
-
             {createResult && (
               <div className={`p-4 rounded-2xl text-[9px] font-bold uppercase tracking-wide flex items-start gap-2 ${
                 createResult.success
@@ -326,20 +276,14 @@ export default function UsuariosPage() {
                 {createResult.message}
               </div>
             )}
-
             <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setIsManualModalOpen(false)}
-                className="flex-1 py-4 bg-zinc-900/50 text-white rounded-2xl font-black text-[9px] uppercase hover:bg-white/5 transition-all"
-              >
+              <button onClick={() => setIsManualModalOpen(false)}
+                className="flex-1 py-4 bg-zinc-900/50 text-white rounded-2xl font-black text-[9px] uppercase hover:bg-white/5 transition-all">
                 {createResult?.success ? 'Cerrar' : 'Cancelar'}
               </button>
               {!createResult?.success && (
-                <button
-                  onClick={handleCreateUser}
-                  disabled={creating || !newUserName.trim() || !newUserEmail.trim()}
-                  className="flex-1 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase hover:bg-[#00D4EE] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <button onClick={handleCreateUser} disabled={creating || !newUserName.trim() || !newUserEmail.trim()}
+                  className="flex-1 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase hover:bg-[#00D4EE] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                   {creating ? 'Creando...' : 'Crear Usuario'}
                 </button>
               )}
@@ -377,10 +321,8 @@ export default function UsuariosPage() {
                   </button>
                 </div>
               </div>
-              <button
-                onClick={handleResetProtocol}
-                className="w-full py-5 bg-[#00E5FF] text-black font-black uppercase text-[10px] tracking-[0.3em] rounded-2xl transition-all"
-              >
+              <button onClick={handleResetProtocol}
+                className="w-full py-5 bg-[#00E5FF] text-black font-black uppercase text-[10px] tracking-[0.3em] rounded-2xl transition-all">
                 Enviar Link de Reseteo
               </button>
             </div>

@@ -1,7 +1,8 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useContext } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { createClient } from '../../../../lib/supabase'
+import { UserContext } from '../../../../lib/context'
+import db from '../../../../lib/database'
 import { jsPDF } from 'jspdf'
 import { 
   ChevronLeft, Video, FileCode, FileText, 
@@ -12,26 +13,26 @@ import {
 export default function CourseEditorPage() {
   const { id } = useParams()
   const router = useRouter()
+  const { profile, loadingProfile } = useContext(UserContext)
   const containerRef = useRef<HTMLDivElement>(null)
-  
+
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('modulos')
   const [selectedModId, setSelectedModId] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
-  
-  const [currentUser, setCurrentUser] = useState<any>(null)
-  const [isAdmin, setIsAdmin] = useState(false) 
-  const [isStudentMode, setIsStudentMode] = useState(true) 
-  
-  const [isUnlocked, setIsUnlocked] = useState(false) 
-  const [userAnswers, setUserAnswers] = useState<Record<number, string[]>>({}) 
+
+  // Rol derivado del contexto — sin llamada extra a BD
+  const isAdmin = profile?.role?.toLowerCase().trim() === 'admin'
+  const [isStudentMode, setIsStudentMode] = useState(true)
+
+  const [isUnlocked, setIsUnlocked] = useState(false)
+  const [userAnswers, setUserAnswers] = useState<Record<number, string[]>>({})
   const [simulationResult, setSimulationResult] = useState<{score: number, passed: boolean} | null>(null)
   const [savingProgress, setSavingProgress] = useState(false)
-  
+
   const [courseData, setCourseData] = useState<any>(null)
   const [modules, setModules] = useState<any[]>([])
 
-  // VISIBILIDAD
   const [allStudents, setAllStudents] = useState<any[]>([])
   const [enrolledIds, setEnrolledIds] = useState<Set<string>>(new Set())
   const [savingEnrollment, setSavingEnrollment] = useState<string | null>(null)
@@ -40,92 +41,72 @@ export default function CourseEditorPage() {
   const [certSettings, setCertSettings] = useState<any>({
     bgImage: null,
     elements: {
-      name: { top: 45, left: 50, fontSize: 40, color: '#000000', visible: true, label: 'Nombre Estudiante' },
+      name:   { top: 45, left: 50, fontSize: 40, color: '#000000', visible: true, label: 'Nombre Estudiante' },
       course: { top: 60, left: 50, fontSize: 25, color: '#00E5FF', visible: true, label: 'Nombre del Curso' },
-      date: { top: 80, left: 50, fontSize: 12, color: '#94a3b8', visible: true, label: 'Fecha' }
+      date:   { top: 80, left: 50, fontSize: 12, color: '#94a3b8', visible: true, label: 'Fecha' }
     }
   })
 
-  const getTodayFormatted = () => new Date().toLocaleDateString('es-ES', { 
-    day: '2-digit', month: '2-digit', year: 'numeric' 
+  const getTodayFormatted = () => new Date().toLocaleDateString('es-ES', {
+    day: '2-digit', month: '2-digit', year: 'numeric'
   })
 
   useEffect(() => {
+    if (loadingProfile) return
+    if (!profile) { router.replace('/login'); return }
+    setIsStudentMode(!isAdmin)
+  }, [profile, loadingProfile, isAdmin, router])
+
+  useEffect(() => {
+    if (!id || loadingProfile || !profile) return
+
     const fetchInitData = async () => {
       setLoading(true)
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-
       try {
-        const [profileRes, courseRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', session.user.id).single(),
-          supabase.from('courses').select('*').eq('id', id).single()
-        ])
+        const session = await db.getSession()
+        if (!session) { router.replace('/login'); return }
 
-        if (profileRes.data) {
-          setCurrentUser(profileRes.data)
-          const realIsAdmin = profileRes.data.role?.toLowerCase() === 'admin'
-          setIsAdmin(realIsAdmin)
-          setIsStudentMode(!realIsAdmin)
-
-          // Si es admin, cargamos estudiantes y enrollments
-          if (realIsAdmin) {
-            const [studentsRes, enrollmentsRes] = await Promise.all([
-              supabase.from('profiles').select('id, full_name, email, role').eq('role', 'estudiante').order('full_name'),
-              supabase.from('enrollments').select('profile_id').eq('course_id', id)
-            ])
-            setAllStudents(studentsRes.data || [])
-            setEnrolledIds(new Set((enrollmentsRes.data || []).map((e: any) => e.profile_id)))
-          }
+        // Curso — siempre necesario
+        const courseRes = await db.getCourse(id as string)
+        if (courseRes) {
+          setCourseData(courseRes)
+          setModules(courseRes.modules || [])
+          if (courseRes.certificate_config?.elements) setCertSettings(courseRes.certificate_config)
+          if (courseRes.modules?.length > 0) setSelectedModId(courseRes.modules[0].id)
         }
 
-        if (courseRes.data) {
-          setCourseData(courseRes.data)
-          setModules(courseRes.data.modules || [])
-          if (courseRes.data.certificate_config?.elements) {
-            setCertSettings(courseRes.data.certificate_config)
-          }
-          if (courseRes.data.modules?.length > 0) {
-            setSelectedModId(courseRes.data.modules[0].id)
-          }
+        if (isAdmin) {
+          // Admin: cargar estudiantes y enrollments
+          const [students, enrollments] = await Promise.all([
+            db.getAllProfiles('estudiante'),
+            db.getEnrollments(id as string),
+          ])
+          setAllStudents(students)
+          setEnrolledIds(new Set(enrollments.map((e: any) => e.profile_id)))
+        } else {
+          // Estudiante: verificar si ya completó el curso
+          const progress = await db.getProgress(session.user.id, id as string)
+          if (progress?.is_completed) setIsUnlocked(true)
         }
-
-        if (profileRes.data?.role?.toLowerCase() !== 'admin') {
-          const { data: existingProgress } = await supabase
-            .from('student_progress')
-            .select('is_completed')
-            .eq('profile_id', session.user.id)
-            .eq('course_id', id)
-            .maybeSingle()
-          if (existingProgress?.is_completed) setIsUnlocked(true)
-        }
-
-      } finally { 
-        setLoading(false) 
+      } finally {
+        setLoading(false)
       }
     }
-    if (id) fetchInitData()
-  }, [id, router])
+
+    fetchInitData()
+  }, [id, profile, loadingProfile, isAdmin, router])
 
   const selectedModule = modules.find(m => m.id === selectedModId)
 
-  // TOGGLE ENROLLMENT
+  // ─── ENROLLMENT ───────────────────────────────────────────────
   const toggleEnrollment = async (profileId: string) => {
     setSavingEnrollment(profileId)
-    const supabase = createClient()
-    const isEnrolled = enrolledIds.has(profileId)
-
     try {
-      if (isEnrolled) {
-        await supabase.from('enrollments')
-          .delete()
-          .eq('profile_id', profileId)
-          .eq('course_id', id)
+      if (enrolledIds.has(profileId)) {
+        await db.removeEnrollment(profileId, id as string)
         setEnrolledIds(prev => { const next = new Set(prev); next.delete(profileId); return next })
       } else {
-        await supabase.from('enrollments')
-          .insert({ profile_id: profileId, course_id: id })
+        await db.addEnrollment(profileId, id as string)
         setEnrolledIds(prev => new Set([...prev, profileId]))
       }
     } catch (err) {
@@ -136,27 +117,24 @@ export default function CourseEditorPage() {
   }
 
   const enrollAll = async () => {
-    const supabase = createClient()
-    const notEnrolled = allStudents.filter(s => !enrolledIds.has(s.id))
-    for (const student of notEnrolled) {
-      await supabase.from('enrollments').insert({ profile_id: student.id, course_id: id })
-    }
+    const notEnrolled = allStudents.filter(s => !enrolledIds.has(s.id)).map(s => s.id)
+    if (notEnrolled.length === 0) return
+    await db.bulkAddEnrollments(id as string, notEnrolled)
     setEnrolledIds(new Set(allStudents.map(s => s.id)))
   }
 
   const unenrollAll = async () => {
-    const supabase = createClient()
-    await supabase.from('enrollments').delete().eq('course_id', id)
+    const enrolled = allStudents.filter(s => enrolledIds.has(s.id)).map(s => s.id)
+    if (enrolled.length === 0) return
+    await db.bulkRemoveEnrollments(id as string, enrolled)
     setEnrolledIds(new Set())
   }
 
+  // ─── UTILS ────────────────────────────────────────────────────
   const getEmbedUrl = (url: string) => {
     if (!url) return null
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/
-    const match = url.match(regExp)
-    return (match && match[2].length === 11) 
-      ? `https://www.youtube.com/embed/${match[2]}` 
-      : url
+    const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/)
+    return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url
   }
 
   const handleFileUpload = async (e: any, type: 'content' | 'cert') => {
@@ -164,17 +142,10 @@ export default function CourseEditorPage() {
     if (!file) return
     setUploading(true)
     try {
-      const supabase = createClient()
-      const { data } = await supabase.storage
-        .from('course_materials')
-        .upload(`${Date.now()}-${file.name}`, file)
-      if (data) {
-        const url = supabase.storage
-          .from('course_materials')
-          .getPublicUrl(data.path).data.publicUrl
-        if (type === 'cert') setCertSettings({...certSettings, bgImage: url})
-        else updateModule('content', url)
-      }
+      const fileName = `${Date.now()}-${file.name}`
+      const url = await db.uploadFile('course_materials', fileName, file)
+      if (type === 'cert') setCertSettings({ ...certSettings, bgImage: url })
+      else updateModule('content', url)
     } catch (err) {
       console.error('Error uploading file:', err)
     } finally {
@@ -186,9 +157,7 @@ export default function CourseEditorPage() {
     const newList = [...list]
     const targetIdx = dir === 'up' ? idx - 1 : idx + 1
     if (targetIdx < 0 || targetIdx >= newList.length) return list
-    const temp = newList[idx]
-    newList[idx] = newList[targetIdx]
-    newList[targetIdx] = temp
+    ;[newList[idx], newList[targetIdx]] = [newList[targetIdx], newList[idx]]
     return newList
   }
 
@@ -198,35 +167,35 @@ export default function CourseEditorPage() {
   }
 
   const updateQuestion = (qId: number, field: string, value: any) => {
-    const updated = selectedModule.questions.map((q: any) =>
+    updateModule('questions', selectedModule.questions.map((q: any) =>
       q.id === qId ? { ...q, [field]: value } : q
-    )
-    updateModule('questions', updated)
+    ))
   }
 
   const updateOption = (qId: number, optIdx: number, value: string) => {
-    const updated = selectedModule.questions.map((q: any) => {
+    updateModule('questions', selectedModule.questions.map((q: any) => {
       if (q.id !== qId) return q
       const newOptions = [...q.options]
       const wasCorrect = q.correctAnswers?.includes(newOptions[optIdx])
       newOptions[optIdx] = value
-      const newCorrects = wasCorrect
-        ? q.correctAnswers.map((c: string) => c === q.options[optIdx] ? value : c)
-        : q.correctAnswers || []
-      return { ...q, options: newOptions, correctAnswers: newCorrects }
-    })
-    updateModule('questions', updated)
+      return {
+        ...q,
+        options: newOptions,
+        correctAnswers: wasCorrect
+          ? q.correctAnswers.map((c: string) => c === q.options[optIdx] ? value : c)
+          : q.correctAnswers || []
+      }
+    }))
   }
 
   const addOption = (qId: number) => {
-    const updated = selectedModule.questions.map((q: any) =>
+    updateModule('questions', selectedModule.questions.map((q: any) =>
       q.id === qId ? { ...q, options: [...(q.options || []), `Opción ${(q.options?.length || 0) + 1}`] } : q
-    )
-    updateModule('questions', updated)
+    ))
   }
 
   const removeOption = (qId: number, optIdx: number) => {
-    const updated = selectedModule.questions.map((q: any) => {
+    updateModule('questions', selectedModule.questions.map((q: any) => {
       if (q.id !== qId) return q
       const removedOpt = q.options[optIdx]
       return {
@@ -234,25 +203,21 @@ export default function CourseEditorPage() {
         options: q.options.filter((_: any, i: number) => i !== optIdx),
         correctAnswers: (q.correctAnswers || []).filter((c: string) => c !== removedOpt)
       }
-    })
-    updateModule('questions', updated)
+    }))
   }
 
   const toggleCorrect = (qId: number, opt: string, isMultiple: boolean) => {
-    const updated = selectedModule.questions.map((q: any) => {
+    updateModule('questions', selectedModule.questions.map((q: any) => {
       if (q.id !== qId) return q
       const current = q.correctAnswers || []
-      let next: string[]
-      if (isMultiple) {
-        next = current.includes(opt) ? current.filter((c: string) => c !== opt) : [...current, opt]
-      } else {
-        next = current.includes(opt) ? [] : [opt]
-      }
+      const next = isMultiple
+        ? (current.includes(opt) ? current.filter((c: string) => c !== opt) : [...current, opt])
+        : (current.includes(opt) ? [] : [opt])
       return { ...q, correctAnswers: next }
-    })
-    updateModule('questions', updated)
+    }))
   }
 
+  // ─── SIMULACIÓN / PROGRESO ───────────────────────────────────
   const runSimulation = async () => {
     if (!selectedModule?.questions) return
     const objectiveQs = selectedModule.questions.filter((q: any) => q.type !== 'open')
@@ -271,24 +236,18 @@ export default function CourseEditorPage() {
       setIsUnlocked(true)
       setSavingProgress(true)
       try {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
+        const session = await db.getSession()
         if (!session) return
-        const { data: existing } = await supabase
-          .from('student_progress')
-          .select('id, is_completed')
-          .eq('profile_id', session.user.id)
-          .eq('course_id', id)
-          .maybeSingle()
+        const existing = await db.getProgress(session.user.id, id as string)
         if (existing) {
           if (!existing.is_completed) {
-            await supabase.from('student_progress').update({
+            await db.updateProgress(session.user.id, id as string, {
               current_score: score, is_completed: true, completed_at: new Date().toISOString()
-            }).eq('id', existing.id)
+            })
           }
         } else {
-          await supabase.from('student_progress').insert({
-            id: crypto.randomUUID(), profile_id: session.user.id, course_id: id,
+          await db.createProgress(session.user.id, id as string)
+          await db.updateProgress(session.user.id, id as string, {
             current_score: score, is_completed: true, completed_at: new Date().toISOString()
           })
         }
@@ -300,17 +259,23 @@ export default function CourseEditorPage() {
     }
   }
 
+  const publishChanges = async () => {
+    await db.updateCourse(id as string, { modules, certificate_config: certSettings })
+    alert('✅ Nodo Sincronizado')
+  }
+
+  // ─── PDF ──────────────────────────────────────────────────────
   const generatePDF = async () => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1920, 1358] })
     if (certSettings.bgImage) {
       const img = new Image(); img.crossOrigin = 'anonymous'; img.src = certSettings.bgImage
-      await new Promise((r) => img.onload = r)
+      await new Promise((r) => { img.onload = r })
       doc.addImage(img, 'PNG', 0, 0, 1920, 1358)
     }
     Object.entries(certSettings.elements).forEach(([key, el]: [string, any]) => {
       if (el.visible) {
         doc.setFontSize(el.fontSize * 2.4); doc.setTextColor(el.color); doc.setFont('helvetica', 'bolditalic')
-        const val = key === 'name' ? (currentUser?.full_name || 'STUDENT') 
+        const val = key === 'name' ? (profile?.full_name || 'STUDENT')
           : key === 'course' ? (courseData?.title || 'COURSE') : getTodayFormatted()
         doc.text(val.toUpperCase(), (el.left / 100) * 1920, (el.top / 100) * 1358, { align: 'center' })
       }
@@ -318,7 +283,8 @@ export default function CourseEditorPage() {
     doc.save(`Certificado-${courseData?.title}.pdf`)
   }
 
-  if (loading) return (
+  // ─── RENDER ───────────────────────────────────────────────────
+  if (loadingProfile || loading) return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-black text-[#00E5FF]">
       <div className="relative">
         <div className="absolute inset-0 bg-[#00E5FF]/20 blur-3xl animate-pulse rounded-full" />
@@ -343,7 +309,6 @@ export default function CourseEditorPage() {
       }}
       onMouseUp={() => setDraggingId(null)}
     >
-
       {/* HEADER */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-white/5 pb-8">
         <div className="flex items-center gap-6">
@@ -363,11 +328,8 @@ export default function CourseEditorPage() {
             </button>
           )}
           {!isStudentMode && isAdmin && (
-            <button onClick={() => {
-              const supabase = createClient()
-              supabase.from('courses').update({ modules, certificate_config: certSettings }).eq('id', id)
-                .then(() => alert('✅ Nodo Sincronizado'))
-            }} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase">
+            <button onClick={publishChanges}
+              className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase">
               Publicar Cambios
             </button>
           )}
@@ -402,9 +364,7 @@ export default function CourseEditorPage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-white text-2xl font-black italic uppercase tracking-tighter">
-                Visibilidad del Curso
-              </h2>
+              <h2 className="text-white text-2xl font-black italic uppercase tracking-tighter">Visibilidad del Curso</h2>
               <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest mt-1">
                 {enrolledIds.size} de {allStudents.length} estudiantes tienen acceso
               </p>
@@ -424,9 +384,7 @@ export default function CourseEditorPage() {
           {allStudents.length === 0 ? (
             <div className="text-center py-20 text-zinc-600">
               <Users size={40} className="mx-auto mb-4 opacity-20"/>
-              <p className="text-[9px] font-black uppercase tracking-widest">
-                No hay estudiantes registrados en el directorio
-              </p>
+              <p className="text-[9px] font-black uppercase tracking-widest">No hay estudiantes registrados</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
@@ -449,21 +407,15 @@ export default function CourseEditorPage() {
                         <p className="text-zinc-500 text-[9px]">{student.email}</p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => toggleEnrollment(student.id)}
-                      disabled={isSaving}
+                    <button onClick={() => toggleEnrollment(student.id)} disabled={isSaving}
                       className={`px-5 py-2 rounded-xl text-[8px] font-black uppercase transition-all flex items-center gap-2 ${
                         isEnrolled
                           ? 'bg-[#00E5FF] text-black hover:bg-[#00D4EE]'
                           : 'bg-white/5 border border-white/10 text-zinc-400 hover:border-white/30 hover:text-white'
                       } disabled:opacity-50`}>
-                      {isSaving ? (
-                        <RefreshCw size={12} className="animate-spin"/>
-                      ) : isEnrolled ? (
-                        <><CheckSquare size={12}/> Con acceso</>
-                      ) : (
-                        <><Square size={12}/> Sin acceso</>
-                      )}
+                      {isSaving ? <RefreshCw size={12} className="animate-spin"/>
+                        : isEnrolled ? <><CheckSquare size={12}/> Con acceso</>
+                        : <><Square size={12}/> Sin acceso</>}
                     </button>
                   </div>
                 )
@@ -473,6 +425,7 @@ export default function CourseEditorPage() {
         </div>
       )}
 
+      {/* TAB: MÓDULOS */}
       {activeTab === 'modulos' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
           <div className="xl:col-span-4 space-y-4">
@@ -483,7 +436,7 @@ export default function CourseEditorPage() {
                     selectedModId === mod.id ? 'bg-[#00E5FF]/5 border-[#00E5FF]/40' : 'bg-[#050505] border-white/5'
                   }`}>
                   <div className="flex items-center gap-4">
-                    {mod.type === 'video' ? <Video size={18} /> : mod.type === 'pdf' ? <FileText size={18} /> : mod.type === 'quiz' ? <CheckSquare size={18} /> : <FileCode size={18} />}
+                    {mod.type === 'video' ? <Video size={18}/> : mod.type === 'pdf' ? <FileText size={18}/> : mod.type === 'quiz' ? <CheckSquare size={18}/> : <FileCode size={18}/>}
                     <p className="text-[11px] font-black uppercase tracking-tight">{mod.title}</p>
                   </div>
                   {!isStudentMode && (
@@ -498,7 +451,7 @@ export default function CourseEditorPage() {
             </div>
             {!isStudentMode && (
               <div className="grid grid-cols-2 gap-3 mt-6 p-4 bg-white/[0.02] rounded-[2rem] border border-white/5">
-                {[{t:'video',i:Video},{t:'embed',i:FileCode},{t:'pdf',i:FileText},{t:'quiz',i:CheckSquare}].map(item => (
+                {([{t:'video',i:Video},{t:'embed',i:FileCode},{t:'pdf',i:FileText},{t:'quiz',i:CheckSquare}] as const).map(item => (
                   <button key={item.t} onClick={() => setModules([...modules, {
                     id: Date.now(), title: `NUEVO ${item.t.toUpperCase()}`, type: item.t, content: '', questions: [], totalPoints: 10
                   }])} className="flex flex-col items-center gap-2 p-4 bg-white/5 rounded-xl border border-white/5 hover:border-[#00E5FF]/20 group transition-all">
@@ -527,7 +480,9 @@ export default function CourseEditorPage() {
                       <input type="file" onChange={(e) => handleFileUpload(e, 'content')} className="absolute inset-0 opacity-0 cursor-pointer" />
                       <div className="bg-white/5 p-8 rounded-2xl border-2 border-dashed border-white/10 text-center">
                         <UploadCloud className="mx-auto mb-2 text-zinc-700" />
-                        <p className="text-[8px] font-black text-zinc-500 uppercase">Subir Archivo</p>
+                        <p className="text-[8px] font-black text-zinc-500 uppercase">
+                          {uploading ? 'Subiendo...' : 'Subir Archivo'}
+                        </p>
                       </div>
                     </div>
                     <textarea value={selectedModule.content} onChange={(e) => updateModule('content', e.target.value)}
@@ -562,7 +517,7 @@ export default function CourseEditorPage() {
                                 ...(selectedModule.questions || []),
                                 { id: Date.now(), type: t, text: 'Nueva Pregunta', options: ['Opción A', 'Opción B'], correctAnswers: [] }
                               ])} className="px-4 py-2 bg-[#00E5FF]/10 border border-[#00E5FF]/20 rounded-xl text-[8px] font-black uppercase text-[#00E5FF] hover:bg-[#00E5FF]/20 transition-all flex items-center gap-1">
-                                <Plus size={12} /> {t}
+                                <Plus size={12}/> {t}
                               </button>
                             ))}
                           </div>
@@ -699,6 +654,7 @@ export default function CourseEditorPage() {
         </div>
       )}
 
+      {/* TAB: CERTIFICADO */}
       {activeTab === 'certificado' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
           <div className="xl:col-span-8">
@@ -708,7 +664,7 @@ export default function CourseEditorPage() {
                 <div key={eid} onMouseDown={() => !isStudentMode && setDraggingId(eid)}
                   style={{ top: `${el.top}%`, left: `${el.left}%`, fontSize: `${el.fontSize}px`, color: el.color }}
                   className={`absolute transform -translate-x-1/2 -translate-y-1/2 font-bold italic select-none ${!isStudentMode ? 'cursor-move ring-2 ring-[#00E5FF]/20 hover:ring-[#00E5FF] px-2' : ''}`}>
-                  {eid === 'name' ? (currentUser?.full_name || el.label)
+                  {eid === 'name' ? (profile?.full_name || el.label)
                     : eid === 'course' ? (courseData?.title || el.label)
                     : eid === 'date' ? getTodayFormatted() : el.label}
                 </div>
