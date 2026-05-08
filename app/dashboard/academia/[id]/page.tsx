@@ -1,11 +1,8 @@
 'use client'
-
 import { useState, useEffect } from 'react'
 import db from '../../../../lib/database'
 import { useRouter, useParams } from 'next/navigation'
 import { ChevronLeft, Save, Trash2, Plus, X, Users } from 'lucide-react'
-
-
 
 export default function CourseDetailPage() {
   const router = useRouter()

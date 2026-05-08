@@ -1,11 +1,8 @@
 'use client'
-
 import { useState, useEffect, useCallback } from 'react'
 import db from '../../../lib/database'
 import { useRouter } from 'next/navigation'
 import { RefreshCw, ChevronRight, GraduationCap, Upload, X, Plus, Edit, Clock } from 'lucide-react'
-
-
 
 export default function AcademiaPage() {
   const [courses, setCourses] = useState<any[]>([])
