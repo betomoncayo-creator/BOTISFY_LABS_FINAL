@@ -20,19 +20,49 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     
+    // Validación básica
+    if (!email.trim()) {
+      setError('Por favor ingresa tu email')
+      setLoading(false)
+      return
+    }
+
+    if (!password.trim()) {
+      setError('Por favor ingresa tu contraseña')
+      setLoading(false)
+      return
+    }
+
+    if (password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres')
+      setLoading(false)
+      return
+    }
+    
     try {
       const supabase = createClient()
       const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       })
 
-      if (authError) throw authError
+      if (authError) {
+        setError(authError.message || 'Error al intentar conectar')
+        setLoading(false)
+        return
+      }
 
+      if (!data.session) {
+        setError('No se pudo establecer la sesión. Por favor intenta de nuevo.')
+        setLoading(false)
+        return
+      }
+
+      // ✅ Éxito - redirigir al dashboard
       router.push('/dashboard')
     } catch (err: any) {
       setLoading(false)
-      setError(err.message || 'Error al intentar conectar con el nodo.')
+      setError(err.message || 'Error inesperado al intentar conectar')
     }
   }
 
@@ -42,11 +72,16 @@ export default function LoginPage() {
     setError(null)
     setSuccess(null)
     
+    // Validación
+    if (!email.trim()) {
+      setError('Por favor ingresa tu email')
+      setLoading(false)
+      return
+    }
+    
     try {
-      if (!email) throw new Error('Ingresa tu email')
-      
       const supabase = createClient()
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/auth/reset-password`,
       })
       
@@ -58,9 +93,10 @@ export default function LoginPage() {
       setTimeout(() => {
         setMode('login')
         setSuccess(null)
+        setLoading(false)
       }, 3000)
     } catch (err: any) {
-      setError(err.message || 'Error al enviar email')
+      setError(err.message || 'Error al enviar email de recuperación')
       setLoading(false)
     }
   }
@@ -128,7 +164,7 @@ export default function LoginPage() {
                       placeholder="freddy.moncayo@hotmail.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-[#E8F0FE] text-zinc-900 p-5 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all placeholder:text-zinc-400"
+                      className="w-full bg-[#E8F0FE] text-zinc-900 p-5 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all placeholder:text-zinc-400 disabled:opacity-50"
                       required
                       disabled={loading}
                     />
@@ -147,7 +183,7 @@ export default function LoginPage() {
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         disabled={loading}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition"
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition disabled:opacity-50"
                       >
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
@@ -163,10 +199,13 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-[#00E5FF] hover:bg-[#00d1e6] text-black py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-[0_0_40px_rgba(0,229,255,0.3)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 disabled:opacity-50"
+                    className="w-full bg-[#00E5FF] hover:bg-[#00d1e6] disabled:bg-[#00E5FF]/50 text-black py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-[0_0_40px_rgba(0,229,255,0.3)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 disabled:opacity-75 disabled:cursor-not-allowed"
                   >
                     {loading ? (
-                      <Loader2 className="animate-spin" size={18} />
+                      <>
+                        <Loader2 className="animate-spin" size={18} />
+                        CONECTANDO...
+                      </>
                     ) : (
                       <>Iniciar Conexión <ShieldCheck size={18} /></>
                     )}
@@ -180,7 +219,8 @@ export default function LoginPage() {
                       setPassword('')
                       setError(null)
                     }}
-                    className="w-full text-cyan-400 hover:text-cyan-300 text-xs font-bold uppercase transition-all pt-2"
+                    disabled={loading}
+                    className="w-full text-cyan-400 hover:text-cyan-300 disabled:text-cyan-400/50 text-xs font-bold uppercase transition-all pt-2 disabled:cursor-not-allowed"
                   >
                     ¿Olvidaste tu contraseña?
                   </button>
@@ -198,7 +238,7 @@ export default function LoginPage() {
                     placeholder="freddy.moncayo@hotmail.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-[#E8F0FE] text-zinc-900 p-5 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all placeholder:text-zinc-400"
+                    className="w-full bg-[#E8F0FE] text-zinc-900 p-5 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all placeholder:text-zinc-400 disabled:opacity-50"
                     required
                     disabled={loading}
                   />
@@ -218,10 +258,13 @@ export default function LoginPage() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-[#00E5FF] hover:bg-[#00d1e6] text-black py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-[0_0_40px_rgba(0,229,255,0.3)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 disabled:opacity-50"
+                    className="w-full bg-[#00E5FF] hover:bg-[#00d1e6] disabled:bg-[#00E5FF]/50 text-black py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-[0_0_40px_rgba(0,229,255,0.3)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 disabled:opacity-75 disabled:cursor-not-allowed"
                   >
                     {loading ? (
-                      <Loader2 className="animate-spin" size={18} />
+                      <>
+                        <Loader2 className="animate-spin" size={18} />
+                        ENVIANDO...
+                      </>
                     ) : (
                       <>Enviar Enlace <ShieldCheck size={18} /></>
                     )}

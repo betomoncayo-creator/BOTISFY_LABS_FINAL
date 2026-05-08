@@ -1,43 +1,13 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
-import db from '../../lib/database'
+import { useContext } from 'react'
+import { UserContext } from '../../lib/context'
+import { UserContextProvider } from './UserContextProvider'
 import Sidebar from '../../components/Sidebar'
 import { Menu } from 'lucide-react'
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
-  const [profile, setProfile] = useState<any>(null)
-  const [loadingProfile, setLoadingProfile] = useState(true)
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const initialized = useRef(false)
-
-  useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
-
-    const checkSession = async () => {
-      try {
-        const session = await db.getSession()
-        
-        if (!session) {
-          router.replace('/login')
-          return
-        }
-
-        const profileData = await db.getProfile(session.user.id)
-        setProfile(profileData || { role: 'estudiante' })
-      } catch (err) {
-        console.error('Error fetching profile:', err)
-        router.replace('/login')
-      } finally {
-        setTimeout(() => setLoadingProfile(false), 800)
-      }
-    }
-
-    checkSession()
-  }, [router])
-
+function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
+  const { profile, loadingProfile } = useContext(UserContext)
+  
   // Loading screen
   if (loadingProfile) {
     return (
@@ -70,11 +40,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen bg-[#020202] text-white overflow-hidden relative">
       
       {/* SIDEBAR RESPONSIVO */}
-      <div className={`
-        fixed inset-y-0 left-0 z-[100] transform transition-transform duration-300 lg:relative lg:translate-x-0
-        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-        w-72 bg-[#020202] border-r border-white/5
-      `}>
+      <div className="hidden lg:flex lg:w-72 bg-[#020202] border-r border-white/5">
         <Sidebar />
       </div>
 
@@ -83,10 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         
         {/* TOP BAR MÓVIL */}
         <div className="lg:hidden h-16 bg-[#020202] border-b border-white/5 flex items-center px-6">
-          <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-          >
+          <button className="p-2 hover:bg-white/5 rounded-lg transition-colors">
             <Menu size={24} />
           </button>
         </div>
@@ -98,14 +61,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </div>
-
-      {/* Overlay móvil */}
-      {isMobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-50 lg:hidden"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
     </div>
+  )
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <UserContextProvider>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </UserContextProvider>
   )
 }
