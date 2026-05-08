@@ -13,9 +13,7 @@ export const usuarioSchema = z.object({
     .toLowerCase(),
   
   role: z
-    .enum(['admin', 'estudiante'], {
-      errorMap: () => ({ message: 'El rol debe ser "admin" o "estudiante"' })
-    }),
+    .enum(['admin', 'estudiante']),
   
   avatar_url: z
     .string()
@@ -47,7 +45,7 @@ export function validarUsuario<T>(schema: z.ZodSchema<T>, data: unknown) {
     return { success: true, data: validado }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { success: false, error: error.errors[0]?.message || 'Error de validación' }
+      return { success: false, error: error.issues[0]?.message || 'Error de validación' }
     }
     return { success: false, error: 'Error desconocido' }
   }

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { createClient } from '../../lib/supabase'
+import { createClient } from '@/lib/supabase' 
 import { useRouter } from 'next/navigation'
 import { Loader2, Check, Lock } from 'lucide-react'
 import Image from 'next/image'

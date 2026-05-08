@@ -63,14 +63,14 @@ export default function CourseDetailPage() {
 
       if (isEnrolled) {
         await db.removeEnrollment(profileId, id)
-        setEnrolledIds(prev => {
+        setEnrolledIds((prev: Set<string>) => {
           const next = new Set(prev)
           next.delete(profileId)
           return next
         })
       } else {
         await db.addEnrollment(profileId, id)
-        setEnrolledIds(prev => new Set([...prev, profileId]))
+        setEnrolledIds((prev: Set<string>) => new Set([...prev, profileId]))
       }
     } catch (error) {
       console.error('Error toggling enrollment:', error)
@@ -90,7 +90,7 @@ export default function CourseDetailPage() {
         title,
         description,
       })
-      setCourseData(prev => ({ ...prev, title, description }))
+      setCourseData((prev: any) => ({ ...prev, title, description }))
       setEditMode(false)
       alert('Curso actualizado exitosamente')
     } catch (error) {

@@ -43,9 +43,7 @@ export const userSchema = z.object({
     .max(100, 'El nombre no puede exceder 100 caracteres')
     .trim(),
   role: z
-    .enum(['admin', 'estudiante', 'instructor'], {
-      errorMap: () => ({ message: 'Rol inválido' })
-    }),
+    .enum(['admin', 'estudiante', 'instructor']),
 })
 
 export type UserInput = z.infer<typeof userSchema>
@@ -61,7 +59,7 @@ export const validateData = <T>(schema: z.ZodSchema<T>, data: unknown): {
     return { success: true, data: result }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const firstError = error.errors[0]?.message || 'Error de validación'
+      const firstError = error.issues[0]?.message || 'Error de validación'
       return { success: false, error: firstError }
     }
     return { success: false, error: 'Error desconocido' }
