@@ -1,11 +1,13 @@
 'use client'
-export const dynamic = 'force-dynamic'
+
 import { useState } from 'react'
 import db from '../../lib/database'
 import { createClient } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Loader2, ShieldCheck, Eye, EyeOff, ChevronLeft } from 'lucide-react'
+
+
 
 export default function LoginPage() {
   const [mode, setMode] = useState<'login' | 'forgot'>('login')

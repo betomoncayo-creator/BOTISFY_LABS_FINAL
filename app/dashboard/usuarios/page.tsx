@@ -1,5 +1,5 @@
 'use client'
-export const dynamic = 'force-dynamic'
+
 import { useState, useEffect, useCallback } from 'react'
 import db from '../../../lib/database'
 import { createClient } from '../../../lib/supabase'
@@ -8,6 +8,8 @@ import {
   ShieldCheck, X, Key, RefreshCcw, Copy, Eye, EyeOff, Check
 } from 'lucide-react'
 import BulkUploadModal from '../../../components/BulkUploadModal'
+
+
 
 export default function UsuariosPage() {
   const [usuarios, setUsuarios] = useState<any[]>([])

@@ -1,10 +1,12 @@
 'use client'
-export const dynamic = 'force-dynamic'
+
 import { useState, useEffect, useContext } from 'react'
 import db from '../../lib/database'
 import { useRouter } from 'next/navigation'
 import { Users, Zap, Clock, Award, Shield, UserPlus, BookMarked, RefreshCw, BookOpen, Activity } from 'lucide-react'
 import { UserContext } from '../../components/UserContext'
+
+
 
 export default function DashboardPage() {
   const context = useContext(UserContext)

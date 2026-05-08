@@ -1,10 +1,12 @@
 'use client'
-export const dynamic = 'force-dynamic'
+
 import { useState, useContext } from 'react'
 import { UserContext } from '../../../components/UserContext'
 import { createClient } from '../../../lib/supabase'
 import { Loader2, Check, X, Lock, Mail, User as UserIcon, LogOut } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+
+
 
 export default function SettingsPage() {
   const context = useContext(UserContext)
