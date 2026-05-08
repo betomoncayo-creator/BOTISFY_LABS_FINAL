@@ -1,13 +1,12 @@
 'use client'
 import { useState, useContext } from 'react'
-import { UserContext } from '../../../components/UserContext'
+import { UserContext } from '../../../lib/context'
 import { createClient } from '../../../lib/supabase'
 import { Loader2, Check, X, Lock, Mail, User as UserIcon, LogOut } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function SettingsPage() {
-  const context = useContext(UserContext)
-  const profile = context?.profile
+  const { profile } = useContext(UserContext)
   const router = useRouter()
   
   // Estado para cambio de contraseña
@@ -28,10 +27,10 @@ export default function SettingsPage() {
       if (newPassword.length < 6) throw new Error('Mínimo 6 caracteres')
       if (newPassword !== confirmPassword) throw new Error('Las contraseñas no coinciden')
       
-      const supabaseAuth = createClient()
+      const supabase = createClient()
       
       // Verificar contraseña actual
-      const { error: signInError } = await supabaseAuth.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: profile?.email || '',
         password: currentPassword,
       })
@@ -39,7 +38,7 @@ export default function SettingsPage() {
       if (signInError) throw new Error('Contraseña actual incorrecta')
       
       // Cambiar contraseña
-      const { error: updateError } = await supabaseAuth.auth.updateUser({
+      const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword
       })
       
@@ -60,8 +59,8 @@ export default function SettingsPage() {
 
   const handleLogout = async () => {
     try {
-      const supabaseAuth = createClient()
-      await supabaseAuth.auth.signOut()
+      const supabase = createClient()
+      await supabase.auth.signOut()
       router.push('/login')
     } catch (err) {
       console.error('Error al cerrar sesión:', err)
@@ -103,11 +102,11 @@ export default function SettingsPage() {
             
             <div>
               <p className="text-zinc-500 text-xs uppercase font-bold mb-2">Rol</p>
-              <p className={`text-sm font-bold uppercase p-3 rounded-lg border ${
+              <p className={`text-sm font-bold uppercase p-3 rounded-lg border $
                 profile?.role === 'admin' 
                   ? 'bg-purple-500/10 border-purple-500/20 text-purple-300' 
                   : 'bg-blue-500/10 border-blue-500/20 text-blue-300'
-              }`}>
+              `}>
                 {profile?.role === 'admin' ? '🛡️ Administrador' : '👤 Estudiante'}
               </p>
             </div>

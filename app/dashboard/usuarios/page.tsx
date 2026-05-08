@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
-import db from '../../../lib/database'
 import { createClient } from '../../../lib/supabase'
 import { 
   UserPlus, Search, Trash2, FileSpreadsheet, Mail,
@@ -37,8 +36,12 @@ export default function UsuariosPage() {
   const fetchUsuarios = useCallback(async () => {
     setLoading(true)
     try {
-      const users = await db.getAllProfiles()
-      setUsuarios(users)
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (data) setUsuarios(data)
     } catch (err) {
       console.error('Error fetching usuarios:', err)
     } finally {
@@ -111,8 +114,8 @@ export default function UsuariosPage() {
   const handleResetProtocol = async () => {
     if (!selectedUser) return
     try {
-      const supabaseAuth = createClient()
-      const { error } = await supabaseAuth.auth.resetPasswordForEmail(selectedUser.email, {
+      const supabase = createClient()
+      const { error } = await supabase.auth.resetPasswordForEmail(selectedUser.email, {
         redirectTo: `${window.location.origin}/auth/callback`,
       })
       if (!error) {
