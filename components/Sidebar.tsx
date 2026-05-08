@@ -13,13 +13,14 @@ import {
 import Link from 'next/link'
 
 export default function Sidebar() {
-  const { profile } = useContext(UserContext)
+  const context = useContext(UserContext)
+  const profile = context?.profile
   const router = useRouter()
   const pathname = usePathname()
-  const supabase = createClient()
+  const supabaseAuth = createClient()
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await supabaseAuth.auth.signOut()
     router.push('/login')
   }
 
@@ -49,17 +50,26 @@ export default function Sidebar() {
               <div className={`flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group
                 ${isActive ? 'bg-[#00E5FF] text-black shadow-[0_0_20px_rgba(0,229,255,0.3)]' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}>
                 <item.icon size={20} />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em]">{item.name}</span>
+                <span className="font-black uppercase text-[11px] tracking-wide">{item.name}</span>
               </div>
             </Link>
           )
         })}
       </nav>
 
-      <div className="mt-auto pt-8 border-t border-white/5">
-        <button onClick={handleLogout} className="w-full flex items-center gap-4 px-6 py-5 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-2xl transition-all group">
-          <LogOut size={18} className="text-red-500 opacity-50 group-hover:opacity-100" />
-          <span className="text-red-500 text-[10px] font-black uppercase tracking-[0.3em]">Desconectar</span>
+      <div className="space-y-4 border-t border-white/10 pt-6">
+        <div className="px-4 space-y-1">
+          <p className="text-[#00E5FF] font-black uppercase text-[9px] tracking-wider">Usuario</p>
+          <p className="text-white font-black uppercase text-[11px] truncate">{profile?.full_name || 'Usuario'}</p>
+          <p className="text-zinc-500 text-[9px] truncate">{profile?.email || 'email@example.com'}</p>
+        </div>
+
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-6 py-4 rounded-2xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all group font-black uppercase text-[10px]"
+        >
+          <LogOut size={18} />
+          Cerrar Sesión
         </button>
       </div>
     </aside>
