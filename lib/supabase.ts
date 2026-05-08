@@ -1,6 +1,6 @@
+// lib/supabase.ts
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
-// Definimos la variable fuera para que persista entre renders
 let supabaseInstance: any = null
 
 export const createClient = () => {
@@ -12,9 +12,9 @@ export const createClient = () => {
     {
       auth: {
         persistSession: true,
-        autoRefreshToken: false,
+        autoRefreshToken: true,
         detectSessionInUrl: true,
-        storageKey: 'botisfy-auth-token'
+        storageKey: 'botisfy-auth-token',
       }
     }
   )
