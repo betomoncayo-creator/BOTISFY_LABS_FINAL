@@ -1,11 +1,13 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useContext } from 'react'
 import db from '../../lib/database'
-import { createClient } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
+import { Users, Zap, Clock, Award, Shield, UserPlus, BookMarked, RefreshCw, BookOpen, Activity } from 'lucide-react'
+import { UserContext } from '../../components/UserContext'
 
 export default function DashboardPage() {
-  const { profile } = useContext(UserContext)
+  const context = useContext(UserContext)
+  const profile = context?.profile
   const [stats, setStats] = useState({
     activeUsers: 0,
     completionRate: 0,
@@ -21,82 +23,26 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function fetchDashboardData() {
-      const supabase = createClient()
-
       if (isAdmin) {
         try {
-          const { count: usersCount } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true })
-
-          const { count: totalProgress } = await supabase
-            .from('student_progress')
-            .select('*', { count: 'exact', head: true })
-
-          const { count: completedCount } = await supabase
-            .from('student_progress')
-            .select('*', { count: 'exact', head: true })
-            .eq('is_completed', true)
-
-          const completionRate = totalProgress && totalProgress > 0
-            ? Math.round((completedCount || 0) * 100 / totalProgress)
-            : 0
-
-          let trainingHours = 0
-          const { data: completedRows } = await supabase
-            .from('student_progress')
-            .select('course_id')
-            .eq('is_completed', true)
-
-          if (completedRows && completedRows.length > 0) {
-            const { data: allCourses } = await supabase
-              .from('courses')
-              .select('id, duration_minutes')
-
-            if (allCourses) {
-              const completedIds = completedRows.map((r: any) => String(r.course_id))
-              const matched = allCourses.filter((c: any) =>
-                completedIds.includes(String(c.id))
-              )
-              const totalMinutes = matched.reduce(
-                (acc: number, c: any) => acc + (c.duration_minutes || 0), 0
-              )
-              trainingHours = Math.round(totalMinutes / 60)
-            }
-          }
-
-          const { data: logs } = await supabase
-            .from('profiles')
-            .select('full_name, role, updated_at')
-            .order('updated_at', { ascending: false })
-            .limit(3)
-
-          setStats({
-            activeUsers: usersCount || 0,
-            completionRate,
-            trainingHours,
-            certificates: completedCount || 0,
+          const profiles = await db.getAllProfiles()
+          setStats(prev => ({
+            ...prev,
+            activeUsers: profiles.length || 0,
             loading: false
-          })
-          setRecentLogs(logs || [])
-
+          }))
+          setRecentLogs(profiles.slice(0, 3))
         } catch (err) {
           console.error('Error fetching admin data:', err)
           setStats(s => ({ ...s, loading: false }))
         }
-
       } else {
-        // Vista estudiante — solo cursos con enrollment
+        // Vista estudiante
         try {
-          const { data: { session } } = await supabase.auth.getSession()
+          const session = await db.getSession()
           if (!session) return
 
-          // 1. Enrollments del estudiante
-          const { data: enrollments } = await supabase
-            .from('enrollments')
-            .select('course_id')
-            .eq('profile_id', session.user.id)
-
+          const enrollments = await db.getStudentEnrollments(session.user.id)
           if (!enrollments || enrollments.length === 0) {
             setMyProgress([])
             setStats(s => ({ ...s, loading: false }))
@@ -104,39 +50,21 @@ export default function DashboardPage() {
           }
 
           const enrolledCourseIds = enrollments.map((e: any) => String(e.course_id))
-
-          // 2. Progreso del estudiante
-          const { data: progressRows } = await supabase
-            .from('student_progress')
-            .select('*')
-            .eq('profile_id', session.user.id)
-
-          // 3. Cursos enrollados
-          const { data: allCourses } = await supabase
-            .from('courses')
-            .select('id, title, duration_minutes, image_url')
-
+          const allCourses = await db.getCourses()
+          
           const enrolledCourses = (allCourses || []).filter((c: any) =>
             enrolledCourseIds.includes(String(c.id))
           )
 
-          // 4. Merge curso + progreso
-          const merged = enrolledCourses.map((course: any) => {
-            const progress = (progressRows || []).find(
-              (p: any) => String(p.course_id) === String(course.id)
-            )
-            return {
-              course_id: course.id,
-              current_score: progress?.current_score || 0,
-              is_completed: progress?.is_completed || false,
-              completed_at: progress?.completed_at || null,
-              courses: course
-            }
-          })
+          const merged = enrolledCourses.map((course: any) => ({
+            course_id: course.id,
+            current_score: 0,
+            is_completed: false,
+            courses: course
+          }))
 
           setMyProgress(merged)
           setStats(s => ({ ...s, loading: false }))
-
         } catch (err) {
           console.error('Error fetching student data:', err)
           setStats(s => ({ ...s, loading: false }))
@@ -261,7 +189,7 @@ export default function DashboardPage() {
                         </td>
                         <td className="p-6 text-right">
                           <span className="text-zinc-500 text-[9px] font-black uppercase tracking-widest">
-                            {new Date(reg.updated_at).toLocaleDateString()}
+                            {new Date(reg.updated_at || Date.now()).toLocaleDateString()}
                           </span>
                         </td>
                       </tr>

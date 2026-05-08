@@ -1,8 +1,13 @@
-import { createContext } from 'react'
+import db from './database'
 
-// Definimos un valor por defecto seguro en lugar de null
-export const UserContext = createContext<any>({
-  profile: null,
-  loadingProfile: true,
-  logout: () => {}
-})
+export async function getSession() {
+  return await db.getSession()
+}
+
+export async function getCurrentUser() {
+  return await db.getCurrentUser()
+}
+
+export async function getProfile(userId: string) {
+  return await db.getProfile(userId)
+}

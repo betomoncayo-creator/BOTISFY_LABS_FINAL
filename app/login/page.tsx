@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import db from '../../lib/database'
 import { createClient } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -21,8 +22,8 @@ export default function LoginPage() {
     setError(null)
     
     try {
-      const supabase = createClient()
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      const supabaseAuth = createClient()
+      const { data, error: authError } = await supabaseAuth.auth.signInWithPassword({
         email,
         password,
       })
@@ -45,8 +46,8 @@ export default function LoginPage() {
     try {
       if (!email) throw new Error('Ingresa tu email')
       
-      const supabase = createClient()
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const supabaseAuth = createClient()
+      const { error } = await supabaseAuth.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/reset-password`,
       })
       
