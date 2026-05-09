@@ -1,13 +1,14 @@
 'use client'
-import { useContext } from 'react'
+import { useContext, useState } from 'react'
 import { UserContext } from '../../lib/context'
 import { UserContextProvider } from './UserContextProvider'
 import Sidebar from '../../components/Sidebar'
-import { Menu } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const { profile, loadingProfile } = useContext(UserContext)
-  
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   // Loading screen
   if (loadingProfile) {
     return (
@@ -38,10 +39,27 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen bg-[#020202] text-white overflow-hidden relative">
-      
-      {/* SIDEBAR RESPONSIVO */}
+
+      {/* OVERLAY MOBILE */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR DESKTOP */}
       <div className="hidden lg:flex lg:w-72 bg-[#020202] border-r border-white/5">
         <Sidebar />
+      </div>
+
+      {/* SIDEBAR MOBILE (drawer) */}
+      <div className={`
+        fixed top-0 left-0 h-full w-72 z-50 bg-[#050505] border-r border-white/5
+        transform transition-transform duration-300 ease-in-out lg:hidden
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <Sidebar onClose={() => setSidebarOpen(false)} />
       </div>
 
       {/* CONTENEDOR PRINCIPAL */}
@@ -49,8 +67,11 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         
         {/* TOP BAR MÓVIL */}
         <div className="lg:hidden h-16 bg-[#020202] border-b border-white/5 flex items-center px-6">
-          <button className="p-2 hover:bg-white/5 rounded-lg transition-colors">
-            <Menu size={24} />
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-2 hover:bg-white/5 rounded-lg transition-colors"
+          >
+            {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
 

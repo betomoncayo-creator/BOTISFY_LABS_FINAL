@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { LayoutDashboard, Users, BookOpen, Settings, LogOut } from 'lucide-react'
 import Link from 'next/link'
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const { profile } = useContext(UserContext)
   const router = useRouter()
   const pathname = usePathname()
@@ -37,7 +37,7 @@ export default function Sidebar() {
         {menuItems.map((item) => {
           const isActive = pathname === item.path
           return (
-            <Link key={item.path} href={item.path} className="block">
+            <Link key={item.path} href={item.path} className="block" onClick={onClose}>
               <div className={`flex items-center gap-4 px-6 py-4 rounded-2xl transition-all duration-300 group
                 ${isActive ? 'bg-[#00E5FF] text-black shadow-[0_0_20px_rgba(0,229,255,0.3)]' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}>
                 <item.icon size={20} />
