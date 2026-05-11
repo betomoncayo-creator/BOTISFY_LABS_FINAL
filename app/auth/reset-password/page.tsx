@@ -18,24 +18,31 @@ export default function ResetPasswordPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Supabase pone el token en el hash (#access_token=...)
-    // El cliente de Supabase lo procesa automáticamente
     const supabase = createClient()
 
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'PASSWORD_RECOVERY') {
+    // Verificar si ya hay sesión activa (establecida por el callback server-side)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
         setValidSession(true)
-        setChecking(false)
-      } else if (session) {
-        setValidSession(true)
-        setChecking(false)
-      } else {
         setChecking(false)
       }
     })
 
-    // Timeout por si no dispara el evento
-    setTimeout(() => setChecking(false), 2000)
+    // También escuchar PASSWORD_RECOVERY por si el token viene por hash
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || session) {
+        setValidSession(true)
+        setChecking(false)
+      }
+    })
+
+    // Timeout de seguridad
+    const timer = setTimeout(() => setChecking(false), 3000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timer)
+    }
   }, [])
 
   const handleReset = async (e: React.FormEvent) => {
