@@ -25,10 +25,21 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const supabase = createClient()
+    const params = new URLSearchParams(window.location.search)
+    const isInviteFlow = params.get('invited') === 'true'
+    const hash = window.location.hash
+
+    // Si es invite y hay access_token nuevo en el hash,
+    // cerrar sesión existente primero para que el token del invitado tome efecto
+    if (isInviteFlow && hash.includes('access_token')) {
+      supabase.auth.signOut().then(() => {
+        // Después de signOut, el onAuthStateChange disparará SIGNED_IN
+        // con la sesión del token del hash automáticamente
+      })
+    }
 
     // Forzar sesión desde hash (flujo invite/recovery con #access_token)
-    const hash = window.location.hash
-    if (hash && hash.includes('access_token')) {
+    if (hash && hash.includes('access_token') && !isInviteFlow) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
           setValidSession(true)
@@ -53,8 +64,11 @@ export default function ResetPasswordPage() {
         setChecking(false)
       }
       if (event === 'SIGNED_OUT') {
-        setValidSession(false)
-        setChecking(false)
+        // No marcar inválido en invite — el SIGNED_IN del token viene después
+        if (!isInviteFlow) {
+          setValidSession(false)
+          setChecking(false)
+        }
       }
     })
 

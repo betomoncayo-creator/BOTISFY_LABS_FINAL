@@ -26,6 +26,11 @@ export async function GET(request: Request) {
     }
   )
 
+  // Si es invite, limpiar sesión existente primero
+  if (type === 'invite') {
+    await supabase.auth.signOut()
+  }
+
   // ── Flujo PKCE (code) ──
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
