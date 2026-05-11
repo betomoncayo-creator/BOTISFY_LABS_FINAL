@@ -5,7 +5,7 @@ import { UserContext } from '../../../lib/context'
 import db from '../../../lib/database'
 import {
   UserPlus, Search, Trash2, FileSpreadsheet, Mail,
-  ShieldCheck, X, Key, RefreshCcw, Copy, Lock, Send
+  ShieldCheck, X, Key, RefreshCcw, Copy, Lock, Send, LinkIcon
 } from 'lucide-react'
 import BulkUploadModal from '../../../components/BulkUploadModal'
 
@@ -23,6 +23,13 @@ export default function UsuariosPage() {
 
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [tempToken, setTempToken] = useState('')
+  const [keyMode, setKeyMode] = useState<'choose' | 'manual' | 'email'>('choose')
+  const [resetEmailSent, setResetEmailSent] = useState(false)
+  const [resetEmailLoading, setResetEmailLoading] = useState(false)
+  const [manualPassword, setManualPassword] = useState('')
+  const [manualConfirm, setManualConfirm] = useState('')
+  const [manualError, setManualError] = useState<string | null>(null)
+  const [manualSuccess, setManualSuccess] = useState(false)
 
   // Campos del modal de invitación
   const [newUserName, setNewUserName] = useState('')
@@ -31,7 +38,6 @@ export default function UsuariosPage() {
   const [creating, setCreating] = useState(false)
   const [createResult, setCreateResult] = useState<{ success: boolean; message: string } | null>(null)
 
-  // ─── GUARD DE ROL ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (loadingProfile) return
     if (!profile) { router.replace('/login'); return }
@@ -73,7 +79,6 @@ export default function UsuariosPage() {
     setCreateResult(null); setIsManualModalOpen(true)
   }
 
-  // ─── INVITAR USUARIO (sin contraseña) ────────────────────────────────────
   const handleInviteUser = async () => {
     if (!newUserName.trim() || !newUserEmail.trim()) {
       setCreateResult({ success: false, message: 'Nombre y email son requeridos' })
@@ -108,11 +113,47 @@ export default function UsuariosPage() {
   const openKeyModal = (user: any) => {
     setSelectedUser(user)
     setTempToken(generatePassword())
+    setKeyMode('choose')
+    setResetEmailSent(false)
+    setResetEmailLoading(false)
+    setManualPassword('')
+    setManualConfirm('')
+    setManualError(null)
+    setManualSuccess(false)
     setIsKeyModalOpen(true)
   }
 
-  const handleResetProtocol = async () => {
-    if (!selectedUser) return
+  // Opción A: aplicar contraseña manual via API
+  const handleManualReset = async () => {
+    setManualError(null)
+    if (!manualPassword.trim() || manualPassword.length < 6) {
+      setManualError('Mínimo 6 caracteres')
+      return
+    }
+    if (manualPassword !== manualConfirm) {
+      setManualError('Las contraseñas no coinciden')
+      return
+    }
+    try {
+      const headers = await getAuthHeaders()
+      const res = await fetch('/api/users/reset', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ userId: selectedUser.id, newPassword: manualPassword })
+      })
+      if (res.ok) {
+        setManualSuccess(true)
+      } else {
+        const json = await res.json()
+        setManualError('Error: ' + json.error)
+      }
+    } catch (err) {
+      setManualError('Error inesperado')
+    }
+  }
+
+  // Opción B: aplicar contraseña temporal generada
+  const handleTempReset = async () => {
     try {
       const headers = await getAuthHeaders()
       const res = await fetch('/api/users/reset', {
@@ -121,14 +162,36 @@ export default function UsuariosPage() {
         body: JSON.stringify({ userId: selectedUser.id, newPassword: tempToken })
       })
       if (res.ok) {
-        alert('Contraseña actualizada.')
-        setIsKeyModalOpen(false)
+        setManualSuccess(true)
       } else {
         const json = await res.json()
-        alert('Error: ' + json.error)
+        setManualError('Error: ' + json.error)
       }
     } catch (err) {
-      console.error('Error resetting password:', err)
+      setManualError('Error inesperado')
+    }
+  }
+
+  // Opción C: enviar link de reset por email
+  const handleSendResetEmail = async () => {
+    setResetEmailLoading(true)
+    try {
+      const headers = await getAuthHeaders()
+      const res = await fetch('/api/users/reset', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ userId: selectedUser.id, sendEmail: true, email: selectedUser.email })
+      })
+      if (res.ok) {
+        setResetEmailSent(true)
+      } else {
+        const json = await res.json()
+        setManualError('Error: ' + json.error)
+      }
+    } catch (err) {
+      setManualError('Error inesperado')
+    } finally {
+      setResetEmailLoading(false)
     }
   }
 
@@ -243,8 +306,6 @@ export default function UsuariosPage() {
             <button onClick={() => setIsManualModalOpen(false)} className="absolute top-8 right-8 text-zinc-500 hover:text-white transition-colors">
               <X size={20} />
             </button>
-
-            {/* Header del modal */}
             <div className="flex flex-col items-center text-center mb-2">
               <div className="w-16 h-16 bg-[#00E5FF]/10 rounded-2xl flex items-center justify-center mb-4 border border-[#00E5FF]/20">
                 <Send className="text-[#00E5FF]" size={28} />
@@ -254,41 +315,27 @@ export default function UsuariosPage() {
                 Se enviará invitación por email
               </p>
             </div>
-
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-zinc-400 text-[8px] font-black uppercase">Nombre Completo</label>
-                <input
-                  type="text"
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
+                <input type="text" value={newUserName} onChange={(e) => setNewUserName(e.target.value)}
                   placeholder="Ej: Juan Pérez"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all"
-                />
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all" />
               </div>
               <div className="space-y-2">
                 <label className="text-zinc-400 text-[8px] font-black uppercase">Email</label>
-                <input
-                  type="email"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
+                <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)}
                   placeholder="email@empresa.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all"
-                />
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all" />
               </div>
               <div className="space-y-2">
                 <label className="text-zinc-400 text-[8px] font-black uppercase">Rol</label>
-                <select
-                  value={newUserRole}
-                  onChange={(e) => setNewUserRole(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all"
-                >
+                <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all">
                   <option value="estudiante">Estudiante</option>
                   <option value="admin">Administrador</option>
                 </select>
               </div>
-
-              {/* Info box */}
               <div className="bg-[#00E5FF]/5 border border-[#00E5FF]/20 rounded-2xl px-5 py-4 flex items-start gap-3">
                 <Mail size={14} className="text-[#00E5FF] flex-shrink-0 mt-0.5" />
                 <p className="text-zinc-400 text-[9px] leading-relaxed">
@@ -296,30 +343,21 @@ export default function UsuariosPage() {
                 </p>
               </div>
             </div>
-
             {createResult && (
               <div className={`p-4 rounded-2xl text-[9px] font-bold uppercase tracking-wide flex items-start gap-2 ${
-                createResult.success
-                  ? 'bg-green-500/10 border border-green-500/20 text-green-400'
-                  : 'bg-red-500/10 border border-red-500/20 text-red-400'
+                createResult.success ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'
               }`}>
                 {createResult.message}
               </div>
             )}
-
             <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setIsManualModalOpen(false)}
-                className="flex-1 py-4 bg-zinc-900/50 text-white rounded-2xl font-black text-[9px] uppercase hover:bg-white/5 transition-all"
-              >
+              <button onClick={() => setIsManualModalOpen(false)}
+                className="flex-1 py-4 bg-zinc-900/50 text-white rounded-2xl font-black text-[9px] uppercase hover:bg-white/5 transition-all">
                 {createResult?.success ? 'Cerrar' : 'Cancelar'}
               </button>
               {!createResult?.success && (
-                <button
-                  onClick={handleInviteUser}
-                  disabled={creating || !newUserName.trim() || !newUserEmail.trim()}
-                  className="flex-1 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase hover:bg-[#00D4EE] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
+                <button onClick={handleInviteUser} disabled={creating || !newUserName.trim() || !newUserEmail.trim()}
+                  className="flex-1 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase hover:bg-[#00D4EE] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                   {creating ? 'Enviando...' : <><Send size={12}/> Enviar Invitación</>}
                 </button>
               )}
@@ -335,6 +373,8 @@ export default function UsuariosPage() {
             <button onClick={() => setIsKeyModalOpen(false)} className="absolute top-8 right-8 text-zinc-500 hover:text-white transition-colors">
               <X size={20}/>
             </button>
+
+            {/* Header */}
             <div className="flex flex-col items-center mb-8">
               <div className="w-16 h-16 bg-[#00E5FF]/10 rounded-2xl flex items-center justify-center mb-4 border border-[#00E5FF]/20">
                 <Key className="text-[#00E5FF]" size={32} />
@@ -344,26 +384,133 @@ export default function UsuariosPage() {
                 Usuario: {selectedUser?.full_name}
               </p>
             </div>
-            <div className="space-y-6">
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
-                <p className="text-zinc-500 text-[8px] font-bold uppercase tracking-[0.3em] mb-3">Nueva Contraseña Temporal</p>
-                <code className="text-[#00E5FF] text-xl font-black tracking-[0.2em]">{tempToken}</code>
-                <div className="flex justify-center gap-4 mt-6">
-                  <button onClick={() => navigator.clipboard.writeText(tempToken)} className="p-3 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all">
-                    <Copy size={16}/>
+
+            {/* PASO 1: Elegir modo */}
+            {keyMode === 'choose' && (
+              <div className="space-y-4">
+                <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest text-center mb-6">
+                  ¿Cómo deseas cambiar la contraseña?
+                </p>
+                <button onClick={() => setKeyMode('manual')}
+                  className="w-full py-5 bg-white/5 border border-white/10 hover:border-[#00E5FF]/40 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-3">
+                  <Lock size={16} className="text-[#00E5FF]" /> Establecer contraseña manualmente
+                </button>
+                <button onClick={() => setKeyMode('email')}
+                  className="w-full py-5 bg-white/5 border border-white/10 hover:border-[#00E5FF]/40 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-3">
+                  <LinkIcon size={16} className="text-[#00E5FF]" /> Enviar link de reset por email
+                </button>
+              </div>
+            )}
+
+            {/* PASO 2A: Manual */}
+            {keyMode === 'manual' && !manualSuccess && (
+              <div className="space-y-5">
+                {/* Contraseña temporal generada */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5 text-center">
+                  <p className="text-zinc-500 text-[8px] font-bold uppercase tracking-[0.3em] mb-2">Contraseña temporal sugerida</p>
+                  <code className="text-[#00E5FF] text-lg font-black tracking-[0.15em]">{tempToken}</code>
+                  <div className="flex justify-center gap-3 mt-4">
+                    <button onClick={() => navigator.clipboard.writeText(tempToken)}
+                      className="p-2 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all">
+                      <Copy size={14}/>
+                    </button>
+                    <button onClick={() => setTempToken(generatePassword())}
+                      className="p-2 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all">
+                      <RefreshCcw size={14}/>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <span className="text-zinc-600 text-[9px] uppercase font-bold">— o escribe una contraseña —</span>
+                </div>
+
+                {/* Contraseña custom */}
+                <div className="space-y-3">
+                  <input type="password" value={manualPassword} onChange={(e) => setManualPassword(e.target.value)}
+                    placeholder="Nueva contraseña"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all" />
+                  <input type="password" value={manualConfirm} onChange={(e) => setManualConfirm(e.target.value)}
+                    placeholder="Confirmar contraseña"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all" />
+                </div>
+
+                {manualError && (
+                  <p className="text-red-400 text-[9px] font-bold uppercase bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                    {manualError}
+                  </p>
+                )}
+
+                <div className="flex gap-3">
+                  <button onClick={() => setKeyMode('choose')}
+                    className="flex-1 py-4 bg-zinc-900/50 text-white rounded-2xl font-black text-[9px] uppercase hover:bg-white/5 transition-all">
+                    Atrás
                   </button>
-                  <button onClick={() => setTempToken(generatePassword())} className="p-3 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all">
-                    <RefreshCcw size={16}/>
+                  <button
+                    onClick={manualPassword.trim() ? handleManualReset : handleTempReset}
+                    className="flex-1 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase transition-all flex items-center justify-center gap-2">
+                    <Lock size={14}/> Aplicar
                   </button>
                 </div>
               </div>
-              <button
-                onClick={handleResetProtocol}
-                className="w-full py-5 bg-[#00E5FF] text-black font-black uppercase text-[10px] tracking-[0.3em] rounded-2xl transition-all flex items-center justify-center gap-2"
-              >
-                <Lock size={16}/> Aplicar Nueva Contraseña
-              </button>
-            </div>
+            )}
+
+            {/* PASO 2B: Email */}
+            {keyMode === 'email' && !resetEmailSent && (
+              <div className="space-y-6">
+                <div className="bg-[#00E5FF]/5 border border-[#00E5FF]/20 rounded-2xl px-5 py-5 flex items-start gap-3">
+                  <Mail size={16} className="text-[#00E5FF] flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-white text-[10px] font-black uppercase mb-1">Se enviará un email a:</p>
+                    <p className="text-[#00E5FF] text-xs font-bold">{selectedUser?.email}</p>
+                    <p className="text-zinc-500 text-[9px] mt-2">El usuario recibirá un link para establecer su nueva contraseña.</p>
+                  </div>
+                </div>
+
+                {manualError && (
+                  <p className="text-red-400 text-[9px] font-bold uppercase bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                    {manualError}
+                  </p>
+                )}
+
+                <div className="flex gap-3">
+                  <button onClick={() => setKeyMode('choose')}
+                    className="flex-1 py-4 bg-zinc-900/50 text-white rounded-2xl font-black text-[9px] uppercase hover:bg-white/5 transition-all">
+                    Atrás
+                  </button>
+                  <button onClick={handleSendResetEmail} disabled={resetEmailLoading}
+                    className="flex-1 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    {resetEmailLoading ? 'Enviando...' : <><Send size={14}/> Enviar Link</>}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* SUCCESS: contraseña aplicada */}
+            {manualSuccess && (
+              <div className="flex flex-col items-center gap-4 py-4 text-center">
+                <ShieldCheck className="text-[#00E5FF]" size={48} />
+                <p className="text-white font-black uppercase text-sm">¡Contraseña actualizada!</p>
+                <p className="text-zinc-500 text-[9px]">La contraseña de {selectedUser?.full_name} fue cambiada exitosamente.</p>
+                <button onClick={() => setIsKeyModalOpen(false)}
+                  className="mt-2 px-8 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase transition-all">
+                  Cerrar
+                </button>
+              </div>
+            )}
+
+            {/* SUCCESS: email enviado */}
+            {resetEmailSent && (
+              <div className="flex flex-col items-center gap-4 py-4 text-center">
+                <Mail className="text-[#00E5FF]" size={48} />
+                <p className="text-white font-black uppercase text-sm">¡Email enviado!</p>
+                <p className="text-zinc-500 text-[9px]">Se envió el link de reset a {selectedUser?.email}.</p>
+                <button onClick={() => setIsKeyModalOpen(false)}
+                  className="mt-2 px-8 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase transition-all">
+                  Cerrar
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

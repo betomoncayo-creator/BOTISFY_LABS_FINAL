@@ -1,6 +1,4 @@
 // app/api/users/reset/route.ts
-// Fuerza reset de contraseña — solo admins autenticados pueden llamar esto.
-
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse, NextRequest } from 'next/server'
 
@@ -43,8 +41,28 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { userId, newPassword } = await request.json()
+    const body = await request.json()
+    const { userId, newPassword, sendEmail, email } = body
 
+    // ── Modo email: enviar link de reset ──────────────────────────────────
+    if (sendEmail && email) {
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?type=recovery`,
+      })
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+
+      return NextResponse.json({ success: true, message: 'Email de reset enviado' })
+    }
+
+    // ── Modo manual: aplicar contraseña directamente ──────────────────────
     if (!userId || !newPassword) {
       return NextResponse.json(
         { error: 'Faltan parámetros: userId y newPassword son requeridos' },
@@ -59,7 +77,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Prevenir que un admin se resetee a sí mismo por esta ruta
     if (userId === auth.userId) {
       return NextResponse.json(
         { error: 'Usa la sección de configuración para cambiar tu propia contraseña' },
@@ -76,10 +93,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Contraseña actualizada correctamente'
-    })
+    return NextResponse.json({ success: true, message: 'Contraseña actualizada correctamente' })
+
   } catch {
     return NextResponse.json(
       { error: 'Error interno al procesar el reset' },
