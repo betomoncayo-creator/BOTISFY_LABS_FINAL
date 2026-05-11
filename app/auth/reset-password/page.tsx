@@ -26,6 +26,17 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const supabase = createClient()
 
+    // Forzar sesión desde hash (flujo invite/recovery con #access_token)
+    const hash = window.location.hash
+    if (hash && hash.includes('access_token')) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          setValidSession(true)
+          setChecking(false)
+        }
+      })
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setValidSession(true)
