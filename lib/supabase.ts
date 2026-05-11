@@ -1,22 +1,8 @@
 // lib/supabase.ts
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-let supabaseInstance: any = null
-
-export const createClient = () => {
-  if (supabaseInstance) return supabaseInstance
-
-  supabaseInstance = createSupabaseClient(
+export const createClient = () =>
+  createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storageKey: 'botisfy-auth-token',
-      }
-    }
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
-  return supabaseInstance
-}

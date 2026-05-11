@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Loader2, ShieldCheck, Eye, EyeOff, CheckCircle } from 'lucide-react'
+import { Loader2, ShieldCheck, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react'
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState('')
@@ -20,24 +20,38 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     const supabase = createClient()
 
-    // Verificar si ya hay sesión activa (establecida por el callback server-side)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setValidSession(true)
-        setChecking(false)
-      }
-    })
-
-    // También escuchar PASSWORD_RECOVERY por si el token viene por hash
+    // Escuchar eventos de auth — maneja tanto PKCE (ya tiene sesión server-side)
+    // como hash-based (PASSWORD_RECOVERY llega aquí cuando Supabase procesa el #fragment)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' || session) {
+      console.log('[reset-password] auth event:', event, !!session)
+
+      if (event === 'PASSWORD_RECOVERY') {
+        // Flujo hash: Supabase procesó el token del #fragment
         setValidSession(true)
+        setChecking(false)
+        return
+      }
+
+      if (event === 'SIGNED_IN' && session) {
+        // Flujo PKCE: el server ya intercambió el code, hay sesión activa
+        setValidSession(true)
+        setChecking(false)
+        return
+      }
+
+      if (event === 'INITIAL_SESSION') {
+        if (session) {
+          // Ya hay sesión (PKCE flow exitoso desde callback)
+          setValidSession(true)
+        }
         setChecking(false)
       }
     })
 
-    // Timeout de seguridad
-    const timer = setTimeout(() => setChecking(false), 3000)
+    // Fallback: si después de 4s no hubo ningún evento útil, marcamos como inválido
+    const timer = setTimeout(() => {
+      setChecking(false)
+    }, 4000)
 
     return () => {
       subscription.unsubscribe()
@@ -112,7 +126,7 @@ export default function ResetPasswordPage() {
               {checking ? (
                 <div className="flex flex-col items-center gap-4 py-4">
                   <Loader2 className="animate-spin text-cyan-400" size={32} />
-                  <p className="text-zinc-400 text-xs font-black uppercase tracking-widest">Verificando token...</p>
+                  <p className="text-zinc-400 text-xs font-black uppercase tracking-widest">Verificando sesión...</p>
                 </div>
 
               ) : success ? (
@@ -123,9 +137,10 @@ export default function ResetPasswordPage() {
                 </div>
 
               ) : !validSession ? (
-                <div className="flex flex-col items-center gap-4 py-4 text-center">
+                <div className="flex flex-col items-center gap-6 py-4 text-center">
+                  <AlertCircle className="text-red-400" size={40} />
                   <p className="text-red-400 text-[10px] font-black uppercase bg-red-500/10 py-3 px-4 rounded-xl border border-red-500/20">
-                    Link inválido o expirado. Solicita uno nuevo.
+                    Link inválido o expirado. Solicita uno nuevo desde el login.
                   </p>
                   <button
                     onClick={() => router.push('/login')}

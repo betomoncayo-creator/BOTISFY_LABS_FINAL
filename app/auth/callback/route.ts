@@ -1,3 +1,4 @@
+// app/auth/callback/route.ts
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -15,7 +16,9 @@ export async function GET(request: Request) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
-          get(name: string) { return cookieStore.get(name)?.value },
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
           set(name: string, value: string, options: CookieOptions) {
             cookieStore.set({ name, value, ...options })
           },
@@ -25,14 +28,25 @@ export async function GET(request: Request) {
         },
       }
     )
+
     const { error } = await supabase.auth.exchangeCodeForSession(code)
+
     if (!error) {
-      // Si es recovery → manda a la página de reset
       if (type === 'recovery') {
         return NextResponse.redirect(`${origin}/auth/reset-password`)
       }
       return NextResponse.redirect(`${origin}${next}`)
     }
+
+    console.error('[callback] exchangeCodeForSession error:', error.message)
   }
-  return NextResponse.redirect(`${origin}/login`)
+
+  // Sin code → puede ser flujo hash (tokens en #fragment)
+  // El cliente JS de Supabase los procesa automáticamente en el browser.
+  // Redirigimos a reset-password; la página lo detecta vía onAuthStateChange.
+  if (type === 'recovery') {
+    return NextResponse.redirect(`${origin}/auth/reset-password`)
+  }
+
+  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`)
 }
