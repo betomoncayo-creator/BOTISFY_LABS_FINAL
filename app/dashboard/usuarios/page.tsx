@@ -1,7 +1,3 @@
-// app/dashboard/usuarios/page.tsx
-// CAPA 2 DE SEGURIDAD: Guard de rol en cliente — redirige si no es admin.
-// Las API calls incluyen el token de sesión para que la Capa 1 (servidor) también valide.
-
 'use client'
 import { useState, useEffect, useCallback, useContext } from 'react'
 import { useRouter } from 'next/navigation'
@@ -9,7 +5,7 @@ import { UserContext } from '../../../lib/context'
 import db from '../../../lib/database'
 import {
   UserPlus, Search, Trash2, FileSpreadsheet, Mail,
-  ShieldCheck, X, Key, RefreshCcw, Copy, Eye, EyeOff, Check, Lock
+  ShieldCheck, X, Key, RefreshCcw, Copy, Lock, Send
 } from 'lucide-react'
 import BulkUploadModal from '../../../components/BulkUploadModal'
 
@@ -28,24 +24,20 @@ export default function UsuariosPage() {
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [tempToken, setTempToken] = useState('')
 
+  // Campos del modal de invitación
   const [newUserName, setNewUserName] = useState('')
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserRole, setNewUserRole] = useState('estudiante')
-  const [newUserPassword, setNewUserPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createResult, setCreateResult] = useState<{ success: boolean; message: string } | null>(null)
 
-  // ─── GUARD DE ROL: solo admins ──────────────────────────────────────────────
+  // ─── GUARD DE ROL ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (loadingProfile) return
     if (!profile) { router.replace('/login'); return }
-    if (profile.role?.toLowerCase() !== 'admin') {
-      router.replace('/dashboard')
-    }
+    if (profile.role?.toLowerCase() !== 'admin') router.replace('/dashboard')
   }, [profile, loadingProfile, router])
 
-  // ─── HELPER: obtener token para incluir en headers ──────────────────────────
   const getAuthHeaders = async () => {
     const session = await db.getSession()
     if (!session?.access_token) throw new Error('Sin sesión')
@@ -78,13 +70,13 @@ export default function UsuariosPage() {
 
   const openManualModal = () => {
     setNewUserName(''); setNewUserEmail(''); setNewUserRole('estudiante')
-    setNewUserPassword(generatePassword()); setShowPassword(false)
     setCreateResult(null); setIsManualModalOpen(true)
   }
 
-  const handleCreateUser = async () => {
-    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
-      setCreateResult({ success: false, message: 'Todos los campos son requeridos' })
+  // ─── INVITAR USUARIO (sin contraseña) ────────────────────────────────────
+  const handleInviteUser = async () => {
+    if (!newUserName.trim() || !newUserEmail.trim()) {
+      setCreateResult({ success: false, message: 'Nombre y email son requeridos' })
       return
     }
     setCreating(true); setCreateResult(null)
@@ -96,16 +88,15 @@ export default function UsuariosPage() {
         body: JSON.stringify({
           full_name: newUserName.trim(),
           email: newUserEmail.trim().toLowerCase(),
-          password: newUserPassword,
           role: newUserRole
         })
       })
       const json = await res.json()
       if (!res.ok || !json.success) {
-        setCreateResult({ success: false, message: json.error || 'Error al crear usuario' })
+        setCreateResult({ success: false, message: json.error || 'Error al invitar usuario' })
         return
       }
-      setCreateResult({ success: true, message: `✅ Usuario creado. Contraseña: ${newUserPassword}` })
+      setCreateResult({ success: true, message: `✅ Invitación enviada a ${newUserEmail}` })
       fetchUsuarios()
     } catch (err: any) {
       setCreateResult({ success: false, message: err.message || 'Error inesperado' })
@@ -116,8 +107,7 @@ export default function UsuariosPage() {
 
   const openKeyModal = (user: any) => {
     setSelectedUser(user)
-    const rand = Math.random().toString(36).substring(2, 10).toUpperCase()
-    setTempToken(`BTF-${rand}-2026`)
+    setTempToken(generatePassword())
     setIsKeyModalOpen(true)
   }
 
@@ -131,7 +121,7 @@ export default function UsuariosPage() {
         body: JSON.stringify({ userId: selectedUser.id, newPassword: tempToken })
       })
       if (res.ok) {
-        alert('Contraseña actualizada. Token enviado al operador.')
+        alert('Contraseña actualizada.')
         setIsKeyModalOpen(false)
       } else {
         const json = await res.json()
@@ -160,7 +150,6 @@ export default function UsuariosPage() {
     user.email?.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Mostrar nada mientras verifica el rol
   if (loadingProfile) return null
   if (profile?.role?.toLowerCase() !== 'admin') return null
 
@@ -247,80 +236,91 @@ export default function UsuariosPage() {
         ))}
       </div>
 
-      {/* MODAL CREAR USUARIO */}
+      {/* MODAL INVITAR USUARIO */}
       {isManualModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-md bg-black/80 animate-in fade-in duration-300">
           <div className="bg-[#080808] border border-white/10 w-full max-w-md rounded-[3rem] p-10 relative space-y-6">
             <button onClick={() => setIsManualModalOpen(false)} className="absolute top-8 right-8 text-zinc-500 hover:text-white transition-colors">
               <X size={20} />
             </button>
-            <div>
+
+            {/* Header del modal */}
+            <div className="flex flex-col items-center text-center mb-2">
+              <div className="w-16 h-16 bg-[#00E5FF]/10 rounded-2xl flex items-center justify-center mb-4 border border-[#00E5FF]/20">
+                <Send className="text-[#00E5FF]" size={28} />
+              </div>
               <h2 className="text-white text-2xl font-black uppercase italic tracking-tighter">Nuevo Acceso</h2>
-              <p className="text-zinc-600 text-[8px] font-bold uppercase tracking-widest mt-1">Se creará en Auth + Directorio</p>
+              <p className="text-zinc-500 text-[8px] font-bold uppercase tracking-widest mt-1">
+                Se enviará invitación por email
+              </p>
             </div>
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-zinc-400 text-[8px] font-black uppercase">Nombre Completo</label>
-                <input type="text" value={newUserName} onChange={(e) => setNewUserName(e.target.value)}
+                <input
+                  type="text"
+                  value={newUserName}
+                  onChange={(e) => setNewUserName(e.target.value)}
                   placeholder="Ej: Juan Pérez"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all" />
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all"
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-zinc-400 text-[8px] font-black uppercase">Email</label>
-                <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)}
+                <input
+                  type="email"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
                   placeholder="email@empresa.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all" />
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all"
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-zinc-400 text-[8px] font-black uppercase">Rol</label>
-                <select value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all">
+                <select
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm outline-none focus:border-[#00E5FF]/50 transition-all"
+                >
                   <option value="estudiante">Estudiante</option>
                   <option value="admin">Administrador</option>
                 </select>
               </div>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-zinc-400 text-[8px] font-black uppercase">Contraseña Temporal</label>
-                  <button onClick={() => setNewUserPassword(generatePassword())}
-                    className="text-[#00E5FF] text-[8px] font-black uppercase flex items-center gap-1 hover:opacity-70 transition-all">
-                    <RefreshCcw size={10} /> Regenerar
-                  </button>
-                </div>
-                <div className="relative">
-                  <input type={showPassword ? 'text' : 'password'} value={newUserPassword}
-                    onChange={(e) => setNewUserPassword(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-white text-sm font-mono outline-none focus:border-[#00E5FF]/50 transition-all pr-12" />
-                  <button onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-all">
-                    {showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}
-                  </button>
-                </div>
-                <button onClick={() => navigator.clipboard.writeText(newUserPassword)}
-                  className="flex items-center gap-2 text-zinc-500 text-[8px] font-bold uppercase hover:text-white transition-all">
-                  <Copy size={10}/> Copiar contraseña
-                </button>
+
+              {/* Info box */}
+              <div className="bg-[#00E5FF]/5 border border-[#00E5FF]/20 rounded-2xl px-5 py-4 flex items-start gap-3">
+                <Mail size={14} className="text-[#00E5FF] flex-shrink-0 mt-0.5" />
+                <p className="text-zinc-400 text-[9px] leading-relaxed">
+                  El usuario recibirá un email con un <span className="text-[#00E5FF] font-bold">link de activación</span>. Al hacer click, podrá establecer su propia contraseña y acceder al sistema.
+                </p>
               </div>
             </div>
+
             {createResult && (
               <div className={`p-4 rounded-2xl text-[9px] font-bold uppercase tracking-wide flex items-start gap-2 ${
                 createResult.success
                   ? 'bg-green-500/10 border border-green-500/20 text-green-400'
                   : 'bg-red-500/10 border border-red-500/20 text-red-400'
               }`}>
-                {createResult.success ? <Check size={14} className="flex-shrink-0 mt-0.5"/> : <X size={14} className="flex-shrink-0 mt-0.5"/>}
                 {createResult.message}
               </div>
             )}
+
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setIsManualModalOpen(false)}
-                className="flex-1 py-4 bg-zinc-900/50 text-white rounded-2xl font-black text-[9px] uppercase hover:bg-white/5 transition-all">
+              <button
+                onClick={() => setIsManualModalOpen(false)}
+                className="flex-1 py-4 bg-zinc-900/50 text-white rounded-2xl font-black text-[9px] uppercase hover:bg-white/5 transition-all"
+              >
                 {createResult?.success ? 'Cerrar' : 'Cancelar'}
               </button>
               {!createResult?.success && (
-                <button onClick={handleCreateUser} disabled={creating || !newUserName.trim() || !newUserEmail.trim()}
-                  className="flex-1 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase hover:bg-[#00D4EE] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  {creating ? 'Creando...' : 'Crear Usuario'}
+                <button
+                  onClick={handleInviteUser}
+                  disabled={creating || !newUserName.trim() || !newUserEmail.trim()}
+                  className="flex-1 py-4 bg-[#00E5FF] text-black rounded-2xl font-black text-[9px] uppercase hover:bg-[#00D4EE] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {creating ? 'Enviando...' : <><Send size={12}/> Enviar Invitación</>}
                 </button>
               )}
             </div>
@@ -352,13 +352,15 @@ export default function UsuariosPage() {
                   <button onClick={() => navigator.clipboard.writeText(tempToken)} className="p-3 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all">
                     <Copy size={16}/>
                   </button>
-                  <button onClick={() => openKeyModal(selectedUser)} className="p-3 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all">
+                  <button onClick={() => setTempToken(generatePassword())} className="p-3 bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-all">
                     <RefreshCcw size={16}/>
                   </button>
                 </div>
               </div>
-              <button onClick={handleResetProtocol}
-                className="w-full py-5 bg-[#00E5FF] text-black font-black uppercase text-[10px] tracking-[0.3em] rounded-2xl transition-all flex items-center justify-center gap-2">
+              <button
+                onClick={handleResetProtocol}
+                className="w-full py-5 bg-[#00E5FF] text-black font-black uppercase text-[10px] tracking-[0.3em] rounded-2xl transition-all flex items-center justify-center gap-2"
+              >
                 <Lock size={16}/> Aplicar Nueva Contraseña
               </button>
             </div>

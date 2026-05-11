@@ -1,21 +1,16 @@
 // app/api/users/route.ts
-// CAPA 1 DE SEGURIDAD: Todas las operaciones verifican sesión válida + rol admin
-// antes de ejecutar cualquier acción.
-
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse, NextRequest } from 'next/server'
-import { crearUsuarioSchema, editarUsuarioSchema, validarUsuario } from '../../../lib/usuario-schemas'
+import { editarUsuarioSchema, validarUsuario } from '../../../lib/usuario-schemas'
 
 export const dynamic = 'force-dynamic'
 
-// Cliente admin con SERVICE_ROLE_KEY — bypasa RLS intencionalmente para operaciones admin
 const getAdminClient = () => createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
-// Cliente de sesión con ANON_KEY — respeta RLS, usado para verificar identidad del llamante
 const getSessionClient = (accessToken: string) => createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -25,11 +20,9 @@ const getSessionClient = (accessToken: string) => createClient(
   }
 )
 
-// ─── HELPER: Verifica que el request viene de un admin autenticado ─────────────
-async function requireAdmin(request: NextRequest): Promise<
-  { ok: true; userId: string } | { ok: false; response: NextResponse }
-> {
-  // 1. Extraer Bearer token del header Authorization
+type AdminResult = { ok: true; userId: string } | { ok: false; response: NextResponse }
+
+async function requireAdmin(request: NextRequest): Promise<AdminResult> {
   const authHeader = request.headers.get('authorization')
   const token = authHeader?.replace('Bearer ', '').trim()
 
@@ -43,7 +36,6 @@ async function requireAdmin(request: NextRequest): Promise<
     }
   }
 
-  // 2. Verificar que el token es válido con Supabase
   const sessionClient = getSessionClient(token)
   const { data: { user }, error } = await sessionClient.auth.getUser()
 
@@ -57,7 +49,6 @@ async function requireAdmin(request: NextRequest): Promise<
     }
   }
 
-  // 3. Verificar que el usuario tiene rol admin en profiles
   const adminClient = getAdminClient()
   const { data: profile } = await adminClient
     .from('profiles')
@@ -93,7 +84,6 @@ export async function GET(request: NextRequest) {
     if (error) throw error
     return NextResponse.json({ success: true, data }, { status: 200 })
   } catch (error: any) {
-    console.error('Error en GET /api/users:', error)
     return NextResponse.json(
       { success: false, error: error.message || 'Error al obtener usuarios' },
       { status: 500 }
@@ -101,34 +91,35 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ─── POST /api/users ──────────────────────────────────────────────────────────
+// ─── POST /api/users — inviteUserByEmail (sin contraseña) ────────────────────
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin(request)
   if (!auth.ok) return auth.response
 
   try {
     const body = await request.json()
-    const validation = validarUsuario(crearUsuarioSchema, body)
-    if (!validation.success) {
+    const { full_name, email, role } = body
+
+    if (!full_name?.trim() || !email?.trim() || !role?.trim()) {
       return NextResponse.json(
-        { success: false, error: validation.error },
+        { success: false, error: 'Nombre, email y rol son requeridos' },
         { status: 400 }
       )
     }
 
-    const { full_name, email, password, role, avatar_url } = validation.data!
     const supabaseAdmin = getAdminClient()
 
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name, role }
-    })
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      email.trim().toLowerCase(),
+      {
+        data: { full_name: full_name.trim(), role },
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?type=invite`,
+      }
+    )
 
-    if (authError) {
+    if (inviteError) {
       return NextResponse.json(
-        { success: false, error: authError.message || 'Error al crear usuario' },
+        { success: false, error: inviteError.message || 'Error al invitar usuario' },
         { status: 400 }
       )
     }
@@ -136,25 +127,23 @@ export async function POST(request: NextRequest) {
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .update({
-        full_name,
-        email,
+        full_name: full_name.trim(),
+        email: email.trim().toLowerCase(),
         role,
-        avatar_url: avatar_url || null,
         updated_at: new Date().toISOString()
       })
-      .eq('id', authData.user.id)
+      .eq('id', inviteData.user.id)
 
     if (profileError) throw profileError
 
     return NextResponse.json({
       success: true,
-      message: 'Usuario creado exitosamente',
-      data: { id: authData.user.id, full_name, email, role }
+      message: 'Invitación enviada exitosamente',
+      data: { id: inviteData.user.id, full_name, email, role }
     }, { status: 201 })
   } catch (error: any) {
-    console.error('Error en POST /api/users:', error)
     return NextResponse.json(
-      { success: false, error: error.message || 'Error al crear usuario' },
+      { success: false, error: error.message || 'Error al invitar usuario' },
       { status: 500 }
     )
   }
@@ -195,7 +184,7 @@ export async function PUT(request: NextRequest) {
         email,
         role,
         avatar_url: avatar_url || null,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .eq('id', id)
       .select()
@@ -208,7 +197,6 @@ export async function PUT(request: NextRequest) {
       { status: 200 }
     )
   } catch (error: any) {
-    console.error('Error en PUT /api/users:', error)
     return NextResponse.json(
       { success: false, error: error.message || 'Error al actualizar usuario' },
       { status: 500 }
@@ -232,7 +220,6 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // Prevenir auto-eliminación
     if (id === auth.userId) {
       return NextResponse.json(
         { success: false, error: 'No puedes eliminar tu propia cuenta' },
@@ -257,7 +244,6 @@ export async function DELETE(request: NextRequest) {
       { status: 200 }
     )
   } catch (error: any) {
-    console.error('Error en DELETE /api/users:', error)
     return NextResponse.json(
       { success: false, error: error.message || 'Error al eliminar usuario' },
       { status: 500 }
