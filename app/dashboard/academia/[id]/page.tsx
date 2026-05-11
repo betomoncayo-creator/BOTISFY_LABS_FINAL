@@ -714,7 +714,7 @@ export default function CourseEditorPage() {
           </div>
 
           {/* CONTROLES */}
-          <div className="xl:col-span-4 space-y-6">
+          <div className="xl:col-span-4 space-y-6 xl:sticky xl:top-8 xl:max-h-[calc(100vh-8rem)] xl:overflow-y-auto">
             {!isStudentMode ? (
               <div className="bg-[#050505] p-8 rounded-[2rem] border border-white/5 space-y-8">
 
