@@ -15,7 +15,13 @@ export default function ResetPasswordPage() {
   const [success, setSuccess] = useState(false)
   const [validSession, setValidSession] = useState(false)
   const [checking, setChecking] = useState(true)
+  const [isInvite, setIsInvite] = useState(false)
   const router = useRouter()
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('invited') === 'true') setIsInvite(true)
+  }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -77,6 +83,7 @@ export default function ResetPasswordPage() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col bg-[#000000]">
+
       <div className="absolute inset-0 z-0 overflow-hidden">
         <div className="absolute top-[-20%] left-[-20%] w-[120%] h-[120%] rounded-full bg-cyan-500/20 blur-[180px] animate-[pulse_4s_ease-in-out_infinite]" />
         <div className="absolute bottom-[-20%] right-[-20%] w-[120%] h-[120%] rounded-full bg-purple-600/15 blur-[180px] animate-[pulse_6s_ease-in-out_infinite]" style={{ animationDelay: '2s' }} />
@@ -98,10 +105,15 @@ export default function ResetPasswordPage() {
               />
             </div>
 
-            <div className="text-center">
+            <div className="text-center space-y-2">
               <h1 className="text-white text-5xl font-black italic uppercase tracking-tighter leading-none">
-                Nueva Contraseña
+                {isInvite ? 'Crear Contraseña' : 'Nueva Contraseña'}
               </h1>
+              {isInvite && (
+                <p className="text-zinc-400 text-xs uppercase tracking-widest font-bold">
+                  Bienvenido — establece tu contraseña para activar tu cuenta
+                </p>
+              )}
             </div>
 
             <div className="w-full bg-white/[0.02] border border-white/10 p-10 rounded-[3.5rem] backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)]">
@@ -115,7 +127,9 @@ export default function ResetPasswordPage() {
               ) : success ? (
                 <div className="flex flex-col items-center gap-4 py-4 text-center">
                   <CheckCircle className="text-cyan-400" size={48} />
-                  <p className="text-white font-black uppercase text-sm">¡Contraseña actualizada!</p>
+                  <p className="text-white font-black uppercase text-sm">
+                    {isInvite ? '¡Cuenta activada!' : '¡Contraseña actualizada!'}
+                  </p>
                   <p className="text-zinc-400 text-xs">Redirigiendo al login...</p>
                 </div>
 
@@ -175,7 +189,9 @@ export default function ResetPasswordPage() {
                   <button type="submit" disabled={loading}
                     className="w-full bg-[#00E5FF] hover:bg-[#00d1e6] disabled:bg-[#00E5FF]/50 text-black py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-[0_0_40px_rgba(0,229,255,0.3)] transition-all active:scale-[0.97] flex items-center justify-center gap-3 disabled:opacity-75 disabled:cursor-not-allowed">
                     {loading ? (
-                      <><Loader2 className="animate-spin" size={18} /> ACTUALIZANDO...</>
+                      <><Loader2 className="animate-spin" size={18} /> PROCESANDO...</>
+                    ) : isInvite ? (
+                      <>Activar Cuenta <ShieldCheck size={18} /></>
                     ) : (
                       <>Guardar Contraseña <ShieldCheck size={18} /></>
                     )}

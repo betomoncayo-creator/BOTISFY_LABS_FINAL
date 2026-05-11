@@ -1,4 +1,3 @@
-// app/auth/callback/route.ts
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -9,11 +8,6 @@ export async function GET(request: Request) {
   const token_hash = searchParams.get('token_hash')
   const type = searchParams.get('type')
   const next = searchParams.get('next') ?? '/dashboard'
-
-  console.log('[callback] URL completa:', request.url)
-  console.log('[callback] code:', code)
-  console.log('[callback] token_hash:', token_hash)
-  console.log('[callback] type:', type)
 
   const cookieStore = cookies()
   const supabase = createServerClient(
@@ -34,39 +28,27 @@ export async function GET(request: Request) {
 
   // ── Flujo PKCE (code) ──
   if (code) {
-    console.log('[callback] Intentando exchangeCodeForSession...')
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      console.log('[callback] exchangeCodeForSession OK, type:', type)
-      if (type === 'recovery') {
-        return NextResponse.redirect(`${origin}/auth/reset-password`)
-      }
+      if (type === 'recovery') return NextResponse.redirect(`${origin}/auth/reset-password`)
+      if (type === 'invite') return NextResponse.redirect(`${origin}/auth/reset-password?invited=true`)
       return NextResponse.redirect(`${origin}${next}`)
     }
-    console.error('[callback] exchangeCodeForSession error:', error.message)
   }
 
-  // ── Flujo token_hash (nuevo formato Supabase v2) ──
+  // ── Flujo token_hash (Supabase v2) ──
   if (token_hash && type) {
-    console.log('[callback] Intentando verifyOtp con token_hash...')
     const { error } = await supabase.auth.verifyOtp({ token_hash, type: type as any })
     if (!error) {
-      console.log('[callback] verifyOtp OK, type:', type)
-      if (type === 'recovery') {
-        return NextResponse.redirect(`${origin}/auth/reset-password`)
-      }
+      if (type === 'recovery') return NextResponse.redirect(`${origin}/auth/reset-password`)
+      if (type === 'invite') return NextResponse.redirect(`${origin}/auth/reset-password?invited=true`)
       return NextResponse.redirect(`${origin}${next}`)
     }
-    console.error('[callback] verifyOtp error:', error.message)
   }
 
-  // ── Sin code ni token_hash → flujo hash (el cliente JS procesa el #fragment) ──
-  // Si es recovery, mandamos a la página correcta y el cliente lo maneja
-  if (type === 'recovery') {
-    console.log('[callback] Sin code/token_hash, type=recovery → redirigiendo a reset-password')
-    return NextResponse.redirect(`${origin}/auth/reset-password`)
-  }
+  // ── Fallback sin code/token_hash ──
+  if (type === 'recovery') return NextResponse.redirect(`${origin}/auth/reset-password`)
+  if (type === 'invite') return NextResponse.redirect(`${origin}/auth/reset-password?invited=true`)
 
-  console.log('[callback] No se pudo procesar → redirigiendo a login con error')
-  return NextResponse.redirect(`${origin}/login?error=callback_failed&type=${type || 'unknown'}`)
+  return NextResponse.redirect(`${origin}/login?error=callback_failed`)
 }
