@@ -160,7 +160,7 @@ export default function LoginPage() {
                   <div className="space-y-4">
                     <input
                       type="email"
-                      placeholder="freddy.moncayo@hotmail.com"
+                      placeholder="correo@empresa.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full bg-[#E8F0FE] text-zinc-900 p-5 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-cyan-500/20 transition-all placeholder:text-zinc-400 disabled:opacity-50"
