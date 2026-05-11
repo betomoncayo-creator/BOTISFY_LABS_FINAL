@@ -21,7 +21,6 @@ export default function CourseEditorPage() {
   const [selectedModId, setSelectedModId] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
 
-  // Rol derivado del contexto — sin llamada extra a BD
   const isAdmin = profile?.role?.toLowerCase().trim() === 'admin'
   const [isStudentMode, setIsStudentMode] = useState(true)
 
@@ -59,14 +58,11 @@ export default function CourseEditorPage() {
 
   useEffect(() => {
     if (!id || loadingProfile || !profile) return
-
     const fetchInitData = async () => {
       setLoading(true)
       try {
         const session = await db.getSession()
         if (!session) { router.replace('/login'); return }
-
-        // Curso — siempre necesario
         const courseRes = await db.getCourse(id as string)
         if (courseRes) {
           setCourseData(courseRes)
@@ -74,9 +70,7 @@ export default function CourseEditorPage() {
           if (courseRes.certificate_config?.elements) setCertSettings(courseRes.certificate_config)
           if (courseRes.modules?.length > 0) setSelectedModId(courseRes.modules[0].id)
         }
-
         if (isAdmin) {
-          // Admin: cargar estudiantes y enrollments
           const [students, enrollments] = await Promise.all([
             db.getAllProfiles('estudiante'),
             db.getEnrollments(id as string),
@@ -84,7 +78,6 @@ export default function CourseEditorPage() {
           setAllStudents(students)
           setEnrolledIds(new Set(enrollments.map((e: any) => e.profile_id)))
         } else {
-          // Estudiante: verificar si ya completó el curso
           const progress = await db.getProgress(session.user.id, id as string)
           if (progress?.is_completed) setIsUnlocked(true)
         }
@@ -92,13 +85,11 @@ export default function CourseEditorPage() {
         setLoading(false)
       }
     }
-
     fetchInitData()
   }, [id, profile, loadingProfile, isAdmin, router])
 
   const selectedModule = modules.find(m => m.id === selectedModId)
 
-  // ─── ENROLLMENT ───────────────────────────────────────────────
   const toggleEnrollment = async (profileId: string) => {
     setSavingEnrollment(profileId)
     try {
@@ -130,7 +121,6 @@ export default function CourseEditorPage() {
     setEnrolledIds(new Set())
   }
 
-  // ─── UTILS ────────────────────────────────────────────────────
   const getEmbedUrl = (url: string) => {
     if (!url) return null
     const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/)
@@ -144,7 +134,7 @@ export default function CourseEditorPage() {
     try {
       const fileName = `${Date.now()}-${file.name}`
       const url = await db.uploadFile('course_materials', fileName, file)
-      if (type === 'cert') setCertSettings({ ...certSettings, bgImage: url })
+      if (type === 'cert') setCertSettings((prev: any) => ({ ...prev, bgImage: url }))
       else updateModule('content', url)
     } catch (err) {
       console.error('Error uploading file:', err)
@@ -217,7 +207,6 @@ export default function CourseEditorPage() {
     }))
   }
 
-  // ─── SIMULACIÓN / PROGRESO ───────────────────────────────────
   const runSimulation = async () => {
     if (!selectedModule?.questions) return
     const objectiveQs = selectedModule.questions.filter((q: any) => q.type !== 'open')
@@ -231,7 +220,6 @@ export default function CourseEditorPage() {
     const score = Math.round((correct / (objectiveQs.length || 1)) * totalPoints * 10) / 10
     const passed = score >= totalPoints * 0.7
     setSimulationResult({ score, passed })
-
     if (passed) {
       setIsUnlocked(true)
       setSavingProgress(true)
@@ -264,17 +252,20 @@ export default function CourseEditorPage() {
     alert('✅ Nodo Sincronizado')
   }
 
-  // ─── PDF ──────────────────────────────────────────────────────
   const generatePDF = async () => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: [1920, 1358] })
     if (certSettings.bgImage) {
-      const img = new Image(); img.crossOrigin = 'anonymous'; img.src = certSettings.bgImage
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.src = certSettings.bgImage
       await new Promise((r) => { img.onload = r })
       doc.addImage(img, 'PNG', 0, 0, 1920, 1358)
     }
     Object.entries(certSettings.elements).forEach(([key, el]: [string, any]) => {
       if (el.visible) {
-        doc.setFontSize(el.fontSize * 2.4); doc.setTextColor(el.color); doc.setFont('helvetica', 'bolditalic')
+        doc.setFontSize(el.fontSize * 2.4)
+        doc.setTextColor(el.color)
+        doc.setFont('helvetica', 'bolditalic')
         const val = key === 'name' ? (profile?.full_name || 'STUDENT')
           : key === 'course' ? (courseData?.title || 'COURSE') : getTodayFormatted()
         doc.text(val.toUpperCase(), (el.left / 100) * 1920, (el.top / 100) * 1358, { align: 'center' })
@@ -283,7 +274,6 @@ export default function CourseEditorPage() {
     doc.save(`Certificado-${courseData?.title}.pdf`)
   }
 
-  // ─── RENDER ───────────────────────────────────────────────────
   if (loadingProfile || loading) return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-black text-[#00E5FF]">
       <div className="relative">
@@ -295,16 +285,21 @@ export default function CourseEditorPage() {
   )
 
   return (
-    <div className="w-full space-y-8 pb-20 text-white animate-in fade-in"
+    <div
+      className="w-full space-y-8 pb-20 text-white animate-in fade-in"
       onMouseMove={(e) => {
         if (!draggingId || !containerRef.current || isStudentMode) return
         const rect = containerRef.current.getBoundingClientRect()
         setCertSettings((p: any) => ({
-          ...p, elements: { ...p.elements, [draggingId]: {
-            ...p.elements[draggingId],
-            left: ((e.clientX - rect.left) / rect.width) * 100,
-            top: ((e.clientY - rect.top) / rect.height) * 100
-          }}
+          ...p,
+          elements: {
+            ...p.elements,
+            [draggingId]: {
+              ...p.elements[draggingId],
+              left: ((e.clientX - rect.left) / rect.width) * 100,
+              top: ((e.clientY - rect.top) / rect.height) * 100
+            }
+          }
         }))
       }}
       onMouseUp={() => setDraggingId(null)}
@@ -319,17 +314,18 @@ export default function CourseEditorPage() {
         </div>
         <div className="flex items-center gap-3">
           {isAdmin && (
-            <button onClick={() => setIsStudentMode(!isStudentMode)}
+            <button
+              onClick={() => setIsStudentMode(!isStudentMode)}
               className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase border transition-all flex items-center gap-2 ${
                 isStudentMode ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-zinc-500 border-white/10'
-              }`}>
+              }`}
+            >
               {isStudentMode ? <Edit3 size={14}/> : <User size={14}/>}
               {isStudentMode ? 'MODO DOCENTE' : 'VISTA ESTUDIANTE'}
             </button>
           )}
           {!isStudentMode && isAdmin && (
-            <button onClick={publishChanges}
-              className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase">
+            <button onClick={publishChanges} className="bg-[#00E5FF] text-black px-8 py-3 rounded-xl font-black text-[10px] uppercase">
               Publicar Cambios
             </button>
           )}
@@ -338,22 +334,28 @@ export default function CourseEditorPage() {
 
       {/* TABS */}
       <div className="flex gap-8 border-b border-white/5">
-        <button onClick={() => setActiveTab('modulos')}
-          className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'modulos' ? 'text-[#00E5FF] border-b-2 border-[#00E5FF]' : 'text-zinc-600'}`}>
+        <button
+          onClick={() => setActiveTab('modulos')}
+          className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'modulos' ? 'text-[#00E5FF] border-b-2 border-[#00E5FF]' : 'text-zinc-600'}`}
+        >
           1. Contenidos
         </button>
-        <button onClick={() => { if (!isStudentMode || isUnlocked) setActiveTab('certificado') }}
+        <button
+          onClick={() => { if (!isStudentMode || isUnlocked) setActiveTab('certificado') }}
           className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
             activeTab === 'certificado' ? 'text-[#00E5FF] border-b-2 border-[#00E5FF]'
             : (isUnlocked || !isStudentMode) ? 'text-zinc-400' : 'text-zinc-800 cursor-not-allowed'
-          }`}>
+          }`}
+        >
           2. Certificación {isStudentMode && !isUnlocked && <Lock size={10} />}
         </button>
         {!isStudentMode && isAdmin && (
-          <button onClick={() => setActiveTab('visibilidad')}
+          <button
+            onClick={() => setActiveTab('visibilidad')}
             className={`pb-4 text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
               activeTab === 'visibilidad' ? 'text-[#00E5FF] border-b-2 border-[#00E5FF]' : 'text-zinc-600'
-            }`}>
+            }`}
+          >
             <Users size={12}/> 3. Visibilidad
           </button>
         )}
@@ -370,17 +372,14 @@ export default function CourseEditorPage() {
               </p>
             </div>
             <div className="flex gap-3">
-              <button onClick={unenrollAll}
-                className="px-5 py-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-[8px] font-black uppercase hover:bg-red-500/20 transition-all">
+              <button onClick={unenrollAll} className="px-5 py-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-[8px] font-black uppercase hover:bg-red-500/20 transition-all">
                 Quitar todos
               </button>
-              <button onClick={enrollAll}
-                className="px-5 py-3 bg-[#00E5FF]/10 border border-[#00E5FF]/20 text-[#00E5FF] rounded-xl text-[8px] font-black uppercase hover:bg-[#00E5FF]/20 transition-all">
+              <button onClick={enrollAll} className="px-5 py-3 bg-[#00E5FF]/10 border border-[#00E5FF]/20 text-[#00E5FF] rounded-xl text-[8px] font-black uppercase hover:bg-[#00E5FF]/20 transition-all">
                 Dar acceso a todos
               </button>
             </div>
           </div>
-
           {allStudents.length === 0 ? (
             <div className="text-center py-20 text-zinc-600">
               <Users size={40} className="mx-auto mb-4 opacity-20"/>
@@ -392,14 +391,9 @@ export default function CourseEditorPage() {
                 const isEnrolled = enrolledIds.has(student.id)
                 const isSaving = savingEnrollment === student.id
                 return (
-                  <div key={student.id}
-                    className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${
-                      isEnrolled ? 'bg-[#00E5FF]/5 border-[#00E5FF]/20' : 'bg-[#050505] border-white/5'
-                    }`}>
+                  <div key={student.id} className={`flex items-center justify-between p-5 rounded-2xl border transition-all ${isEnrolled ? 'bg-[#00E5FF]/5 border-[#00E5FF]/20' : 'bg-[#050505] border-white/5'}`}>
                     <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm border transition-all ${
-                        isEnrolled ? 'bg-[#00E5FF]/20 border-[#00E5FF]/30 text-[#00E5FF]' : 'bg-white/5 border-white/10 text-zinc-500'
-                      }`}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm border transition-all ${isEnrolled ? 'bg-[#00E5FF]/20 border-[#00E5FF]/30 text-[#00E5FF]' : 'bg-white/5 border-white/10 text-zinc-500'}`}>
                         {student.full_name?.[0]?.toUpperCase()}
                       </div>
                       <div>
@@ -407,12 +401,13 @@ export default function CourseEditorPage() {
                         <p className="text-zinc-500 text-[9px]">{student.email}</p>
                       </div>
                     </div>
-                    <button onClick={() => toggleEnrollment(student.id)} disabled={isSaving}
+                    <button
+                      onClick={() => toggleEnrollment(student.id)}
+                      disabled={isSaving}
                       className={`px-5 py-2 rounded-xl text-[8px] font-black uppercase transition-all flex items-center gap-2 ${
-                        isEnrolled
-                          ? 'bg-[#00E5FF] text-black hover:bg-[#00D4EE]'
-                          : 'bg-white/5 border border-white/10 text-zinc-400 hover:border-white/30 hover:text-white'
-                      } disabled:opacity-50`}>
+                        isEnrolled ? 'bg-[#00E5FF] text-black hover:bg-[#00D4EE]' : 'bg-white/5 border border-white/10 text-zinc-400 hover:border-white/30 hover:text-white'
+                      } disabled:opacity-50`}
+                    >
                       {isSaving ? <RefreshCw size={12} className="animate-spin"/>
                         : isEnrolled ? <><CheckSquare size={12}/> Con acceso</>
                         : <><Square size={12}/> Sin acceso</>}
@@ -431,10 +426,11 @@ export default function CourseEditorPage() {
           <div className="xl:col-span-4 space-y-4">
             <div className="space-y-3">
               {modules.map((mod, idx) => (
-                <div key={mod.id} onClick={() => { setSelectedModId(mod.id); setSimulationResult(null) }}
-                  className={`p-5 rounded-2xl flex items-center justify-between group border cursor-pointer transition-all ${
-                    selectedModId === mod.id ? 'bg-[#00E5FF]/5 border-[#00E5FF]/40' : 'bg-[#050505] border-white/5'
-                  }`}>
+                <div
+                  key={mod.id}
+                  onClick={() => { setSelectedModId(mod.id); setSimulationResult(null) }}
+                  className={`p-5 rounded-2xl flex items-center justify-between group border cursor-pointer transition-all ${selectedModId === mod.id ? 'bg-[#00E5FF]/5 border-[#00E5FF]/40' : 'bg-[#050505] border-white/5'}`}
+                >
                   <div className="flex items-center gap-4">
                     {mod.type === 'video' ? <Video size={18}/> : mod.type === 'pdf' ? <FileText size={18}/> : mod.type === 'quiz' ? <CheckSquare size={18}/> : <FileCode size={18}/>}
                     <p className="text-[11px] font-black uppercase tracking-tight">{mod.title}</p>
@@ -452,9 +448,11 @@ export default function CourseEditorPage() {
             {!isStudentMode && (
               <div className="grid grid-cols-2 gap-3 mt-6 p-4 bg-white/[0.02] rounded-[2rem] border border-white/5">
                 {([{t:'video',i:Video},{t:'embed',i:FileCode},{t:'pdf',i:FileText},{t:'quiz',i:CheckSquare}] as const).map(item => (
-                  <button key={item.t} onClick={() => setModules([...modules, {
-                    id: Date.now(), title: `NUEVO ${item.t.toUpperCase()}`, type: item.t, content: '', questions: [], totalPoints: 10
-                  }])} className="flex flex-col items-center gap-2 p-4 bg-white/5 rounded-xl border border-white/5 hover:border-[#00E5FF]/20 group transition-all">
+                  <button
+                    key={item.t}
+                    onClick={() => setModules([...modules, { id: Date.now(), title: `NUEVO ${item.t.toUpperCase()}`, type: item.t, content: '', questions: [], totalPoints: 10 }])}
+                    className="flex flex-col items-center gap-2 p-4 bg-white/5 rounded-xl border border-white/5 hover:border-[#00E5FF]/20 group transition-all"
+                  >
                     <item.i size={18} className="text-zinc-600 group-hover:text-[#00E5FF]" />
                     <span className="text-[7px] font-black uppercase text-zinc-700">{item.t}</span>
                   </button>
@@ -467,9 +465,12 @@ export default function CourseEditorPage() {
             {selectedModule && (
               <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem] space-y-8 animate-in slide-in-from-right-4">
                 {!isStudentMode ? (
-                  <input type="text" value={selectedModule.title}
+                  <input
+                    type="text"
+                    value={selectedModule.title}
                     onChange={(e) => updateModule('title', e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white text-xl font-black italic uppercase outline-none focus:border-[#00E5FF]/40" />
+                    className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white text-xl font-black italic uppercase outline-none focus:border-[#00E5FF]/40"
+                  />
                 ) : (
                   <h2 className="text-white text-3xl font-black italic uppercase">{selectedModule.title}</h2>
                 )}
@@ -480,14 +481,16 @@ export default function CourseEditorPage() {
                       <input type="file" onChange={(e) => handleFileUpload(e, 'content')} className="absolute inset-0 opacity-0 cursor-pointer" />
                       <div className="bg-white/5 p-8 rounded-2xl border-2 border-dashed border-white/10 text-center">
                         <UploadCloud className="mx-auto mb-2 text-zinc-700" />
-                        <p className="text-[8px] font-black text-zinc-500 uppercase">
-                          {uploading ? 'Subiendo...' : 'Subir Archivo'}
-                        </p>
+                        <p className="text-[8px] font-black text-zinc-500 uppercase">{uploading ? 'Subiendo...' : 'Subir Archivo'}</p>
                       </div>
                     </div>
-                    <textarea value={selectedModule.content} onChange={(e) => updateModule('content', e.target.value)}
+                    <textarea
+                      value={selectedModule.content}
+                      onChange={(e) => updateModule('content', e.target.value)}
                       className="w-full bg-black border border-white/10 p-5 rounded-2xl text-[#00E5FF] text-xs font-mono"
-                      placeholder="Enlace o Embed..." rows={3} />
+                      placeholder="Enlace o Embed..."
+                      rows={3}
+                    />
                   </div>
                 )}
 
@@ -500,28 +503,30 @@ export default function CourseEditorPage() {
                             <div>
                               <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Puntaje Total</p>
                               <p className="text-zinc-500 text-[8px] mt-1">
-                                Mínimo para aprobar: <span className="text-[#00E5FF] font-black">
-                                  {((selectedModule.totalPoints || 10) * 0.7).toFixed(1)} pts (70%)
-                                </span>
+                                Mínimo para aprobar: <span className="text-[#00E5FF] font-black">{((selectedModule.totalPoints || 10) * 0.7).toFixed(1)} pts (70%)</span>
                               </p>
                             </div>
-                            <input type="number" min={1} max={1000}
+                            <input
+                              type="number" min={1} max={1000}
                               value={selectedModule.totalPoints || 10}
                               onChange={(e) => updateModule('totalPoints', Number(e.target.value))}
-                              className="w-24 text-center bg-black border border-[#00E5FF]/30 rounded-xl p-3 text-white text-2xl font-black outline-none focus:border-[#00E5FF]" />
+                              className="w-24 text-center bg-black border border-[#00E5FF]/30 rounded-xl p-3 text-white text-2xl font-black outline-none focus:border-[#00E5FF]"
+                            />
                           </div>
-
                           <div className="flex gap-2">
                             {['simple', 'multiple', 'open'].map(t => (
-                              <button key={t} onClick={() => updateModule('questions', [
-                                ...(selectedModule.questions || []),
-                                { id: Date.now(), type: t, text: 'Nueva Pregunta', options: ['Opción A', 'Opción B'], correctAnswers: [] }
-                              ])} className="px-4 py-2 bg-[#00E5FF]/10 border border-[#00E5FF]/20 rounded-xl text-[8px] font-black uppercase text-[#00E5FF] hover:bg-[#00E5FF]/20 transition-all flex items-center gap-1">
+                              <button
+                                key={t}
+                                onClick={() => updateModule('questions', [
+                                  ...(selectedModule.questions || []),
+                                  { id: Date.now(), type: t, text: 'Nueva Pregunta', options: ['Opción A', 'Opción B'], correctAnswers: [] }
+                                ])}
+                                className="px-4 py-2 bg-[#00E5FF]/10 border border-[#00E5FF]/20 rounded-xl text-[8px] font-black uppercase text-[#00E5FF] hover:bg-[#00E5FF]/20 transition-all flex items-center gap-1"
+                              >
                                 <Plus size={12}/> {t}
                               </button>
                             ))}
                           </div>
-
                           <div className="space-y-6">
                             {(selectedModule.questions || []).map((q: any, qIdx: number) => (
                               <div key={q.id} className="bg-white/[0.03] border border-white/10 rounded-[2rem] p-6 space-y-5">
@@ -530,10 +535,12 @@ export default function CourseEditorPage() {
                                     <span className="text-[#00E5FF] text-[8px] font-black uppercase tracking-widest">
                                       {qIdx + 1}. {q.type === 'simple' ? 'Opción simple' : q.type === 'multiple' ? 'Múltiple' : 'Abierta'}
                                     </span>
-                                    <input type="text" value={q.text}
+                                    <input
+                                      type="text" value={q.text}
                                       onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
                                       className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white text-sm font-bold outline-none focus:border-[#00E5FF]/50 transition-all"
-                                      placeholder="Escribe la pregunta..." />
+                                      placeholder="Escribe la pregunta..."
+                                    />
                                   </div>
                                   <div className="flex flex-col gap-1 pt-6">
                                     <button onClick={() => updateModule('questions', moveItem(selectedModule.questions, qIdx, 'up'))} disabled={qIdx === 0} className="p-1.5 bg-white/5 rounded-lg hover:bg-white/10 disabled:opacity-20 transition-all"><ArrowUp size={12}/></button>
@@ -541,7 +548,6 @@ export default function CourseEditorPage() {
                                     <button onClick={() => updateModule('questions', selectedModule.questions.filter((x: any) => x.id !== q.id))} className="p-1.5 bg-red-500/10 rounded-lg hover:bg-red-500/20 text-red-500 transition-all"><Trash2 size={12}/></button>
                                   </div>
                                 </div>
-
                                 {q.type !== 'open' && (
                                   <div className="space-y-3 ml-2">
                                     <p className="text-zinc-600 text-[7px] font-black uppercase tracking-widest">
@@ -551,22 +557,28 @@ export default function CourseEditorPage() {
                                       const isCorrect = (q.correctAnswers || []).includes(opt)
                                       return (
                                         <div key={optIdx} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${isCorrect ? 'bg-green-500/10 border-green-500/30' : 'bg-white/[0.02] border-white/10'}`}>
-                                          <button onClick={() => toggleCorrect(q.id, opt, q.type === 'multiple')}
-                                            className={`flex-shrink-0 w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${isCorrect ? 'bg-green-500 border-green-500 text-black' : 'border-white/20 text-zinc-600 hover:border-green-500/50'}`}>
+                                          <button
+                                            onClick={() => toggleCorrect(q.id, opt, q.type === 'multiple')}
+                                            className={`flex-shrink-0 w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${isCorrect ? 'bg-green-500 border-green-500 text-black' : 'border-white/20 text-zinc-600 hover:border-green-500/50'}`}
+                                          >
                                             {isCorrect ? <CheckSquare size={14}/> : <Square size={14}/>}
                                           </button>
-                                          <input type="text" value={opt}
+                                          <input
+                                            type="text" value={opt}
                                             onChange={(e) => updateOption(q.id, optIdx, e.target.value)}
                                             className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-zinc-600"
-                                            placeholder={`Opción ${optIdx + 1}`} />
+                                            placeholder={`Opción ${optIdx + 1}`}
+                                          />
                                           {(q.options || []).length > 2 && (
                                             <button onClick={() => removeOption(q.id, optIdx)} className="flex-shrink-0 p-1 text-zinc-700 hover:text-red-500 transition-all"><X size={12}/></button>
                                           )}
                                         </div>
                                       )
                                     })}
-                                    <button onClick={() => addOption(q.id)}
-                                      className="w-full py-2 border border-dashed border-white/10 rounded-xl text-zinc-600 text-[8px] font-black uppercase hover:border-[#00E5FF]/30 hover:text-[#00E5FF] transition-all flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => addOption(q.id)}
+                                      className="w-full py-2 border border-dashed border-white/10 rounded-xl text-zinc-600 text-[8px] font-black uppercase hover:border-[#00E5FF]/30 hover:text-[#00E5FF] transition-all flex items-center justify-center gap-2"
+                                    >
                                       <Plus size={12}/> Agregar opción
                                     </button>
                                   </div>
@@ -577,7 +589,6 @@ export default function CourseEditorPage() {
                               </div>
                             ))}
                           </div>
-
                           {(selectedModule.questions || []).length === 0 && (
                             <div className="text-center py-12 text-zinc-700">
                               <CheckSquare size={40} className="mx-auto mb-4 opacity-20"/>
@@ -598,8 +609,10 @@ export default function CourseEditorPage() {
                                   {savingProgress ? 'Guardando progreso...' : '✓ Progreso guardado — Certificado desbloqueado'}
                                 </p>
                               )}
-                              <button onClick={() => { setSimulationResult(null); setUserAnswers({}) }}
-                                className="mt-6 px-10 py-3 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase">
+                              <button
+                                onClick={() => { setSimulationResult(null); setUserAnswers({}) }}
+                                className="mt-6 px-10 py-3 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase"
+                              >
                                 Reintentar
                               </button>
                             </div>
@@ -614,13 +627,17 @@ export default function CourseEditorPage() {
                                     ) : q.options?.map((opt: string) => {
                                       const active = (userAnswers[q.id] || []).includes(opt)
                                       return (
-                                        <button key={opt} onClick={() => {
-                                          const list = userAnswers[q.id] || []
-                                          const next = q.type === 'multiple'
-                                            ? (list.includes(opt) ? list.filter((x: any) => x !== opt) : [...list, opt])
-                                            : [opt]
-                                          setUserAnswers({...userAnswers, [q.id]: next})
-                                        }} className={`p-5 rounded-2xl border text-left text-[11px] flex items-center justify-between transition-all ${active ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF]' : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'}`}>
+                                        <button
+                                          key={opt}
+                                          onClick={() => {
+                                            const list = userAnswers[q.id] || []
+                                            const next = q.type === 'multiple'
+                                              ? (list.includes(opt) ? list.filter((x: any) => x !== opt) : [...list, opt])
+                                              : [opt]
+                                            setUserAnswers({...userAnswers, [q.id]: next})
+                                          }}
+                                          className={`p-5 rounded-2xl border text-left text-[11px] flex items-center justify-between transition-all ${active ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF]' : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/20'}`}
+                                        >
                                           {opt} {active ? <CheckSquare size={18}/> : <Square size={18} className="opacity-20"/>}
                                         </button>
                                       )
@@ -640,7 +657,7 @@ export default function CourseEditorPage() {
                     <>
                       {selectedModule.type === 'video' && (
                         selectedModule.content?.includes('youtube.com')
-                          ? <iframe className="w-full aspect-video" src={getEmbedUrl(selectedModule.content)} allowFullScreen />
+                          ? <iframe className="w-full aspect-video" src={getEmbedUrl(selectedModule.content) || ''} allowFullScreen />
                           : <video className="w-full aspect-video" src={selectedModule.content} controls />
                       )}
                       {selectedModule.type === 'pdf' && <iframe src={selectedModule.content} className="w-full h-[600px]" />}
@@ -657,45 +674,181 @@ export default function CourseEditorPage() {
       {/* TAB: CERTIFICADO */}
       {activeTab === 'certificado' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
+
+          {/* PREVIEW */}
           <div className="xl:col-span-8">
-            <div ref={containerRef} className="relative w-full aspect-[1.414/1] bg-white rounded-3xl shadow-2xl overflow-hidden border border-white/10">
-              {certSettings.bgImage && <img src={certSettings.bgImage} className="absolute inset-0 w-full h-full object-cover pointer-events-none" />}
+            <div
+              ref={containerRef}
+              className="relative w-full aspect-[1.414/1] rounded-3xl shadow-2xl overflow-hidden border border-white/10"
+              style={{ background: certSettings.bgImage ? 'transparent' : '#f8f8f8' }}
+            >
+              {certSettings.bgImage ? (
+                <img
+                  src={certSettings.bgImage}
+                  alt="Fondo certificado"
+                  className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+                  crossOrigin="anonymous"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-white to-zinc-100" />
+              )}
               {Object.entries(certSettings.elements).map(([eid, el]: [string, any]) => el.visible && (
-                <div key={eid} onMouseDown={() => !isStudentMode && setDraggingId(eid)}
+                <div
+                  key={eid}
+                  onMouseDown={() => !isStudentMode && setDraggingId(eid)}
                   style={{ top: `${el.top}%`, left: `${el.left}%`, fontSize: `${el.fontSize}px`, color: el.color }}
-                  className={`absolute transform -translate-x-1/2 -translate-y-1/2 font-bold italic select-none ${!isStudentMode ? 'cursor-move ring-2 ring-[#00E5FF]/20 hover:ring-[#00E5FF] px-2' : ''}`}>
-                  {eid === 'name' ? (profile?.full_name || el.label)
-                    : eid === 'course' ? (courseData?.title || el.label)
-                    : eid === 'date' ? getTodayFormatted() : el.label}
+                  className={`absolute transform -translate-x-1/2 -translate-y-1/2 font-bold italic select-none whitespace-nowrap ${
+                    !isStudentMode ? 'cursor-move ring-2 ring-[#00E5FF]/30 hover:ring-[#00E5FF] px-3 py-1 rounded-lg bg-black/10 backdrop-blur-sm' : ''
+                  }`}
+                >
+                  {eid === 'name'   ? (profile?.full_name  || 'Nombre Estudiante')
+                  : eid === 'course' ? (courseData?.title   || 'Nombre del Curso')
+                  : eid === 'date'   ? getTodayFormatted()
+                  : el.label}
                 </div>
               ))}
             </div>
+            {!isStudentMode && certSettings.bgImage && (
+              <p className="text-zinc-700 text-[9px] font-mono mt-2 truncate">🖼 {certSettings.bgImage}</p>
+            )}
           </div>
+
+          {/* CONTROLES */}
           <div className="xl:col-span-4 space-y-6">
             {!isStudentMode ? (
               <div className="bg-[#050505] p-8 rounded-[2rem] border border-white/5 space-y-8">
-                <input type="file" onChange={(e) => handleFileUpload(e, 'cert')} className="text-[10px] text-zinc-500" />
-                {Object.entries(certSettings.elements).map(([eid, el]: [string, any]) => (
-                  <div key={eid} className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-[9px] font-black uppercase text-[#00E5FF] italic">{eid}</span>
-                      <span className="text-[10px] font-bold text-zinc-600">{el.fontSize}px</span>
+
+                {/* SUBIR FONDO */}
+                <div className="space-y-3">
+                  <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest">Imagen de Fondo</p>
+                  <label className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
+                    certSettings.bgImage ? 'border-[#00E5FF]/40 bg-[#00E5FF]/5' : 'border-white/10 hover:border-[#00E5FF]/30 hover:bg-white/[0.02]'
+                  }`}>
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, 'cert')} />
+                    <UploadCloud size={24} className={certSettings.bgImage ? 'text-[#00E5FF]' : 'text-zinc-600'} />
+                    <span className="text-[9px] font-black uppercase text-center">
+                      {uploading ? 'Subiendo...' : certSettings.bgImage ? 'Cambiar imagen' : 'Subir fondo PNG/JPG'}
+                    </span>
+                  </label>
+                  {certSettings.bgImage && (
+                    <button
+                      onClick={() => setCertSettings((prev: any) => ({ ...prev, bgImage: null }))}
+                      className="w-full py-2 text-red-400 text-[8px] font-black uppercase border border-red-500/20 rounded-xl hover:bg-red-500/10 transition-all"
+                    >
+                      Quitar imagen
+                    </button>
+                  )}
+                </div>
+
+                {/* ELEMENTOS */}
+                <div className="border-t border-white/5 pt-6 space-y-6">
+                  <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest">Elementos de Texto</p>
+                  <p className="text-zinc-600 text-[8px]">Arrastra los textos en el preview para reposicionarlos</p>
+                  {Object.entries(certSettings.elements).map(([eid, el]: [string, any]) => (
+                    <div key={eid} className="bg-white/[0.03] border border-white/5 rounded-2xl p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase text-[#00E5FF]">
+                          {eid === 'name' ? '👤 Nombre' : eid === 'course' ? '📚 Curso' : '📅 Fecha'}
+                        </span>
+                        <button
+                          onClick={() => setCertSettings((prev: any) => ({
+                            ...prev,
+                            elements: { ...prev.elements, [eid]: { ...el, visible: !el.visible } }
+                          }))}
+                          className={`text-[8px] font-black uppercase px-3 py-1 rounded-lg transition-all ${
+                            el.visible ? 'bg-[#00E5FF]/10 text-[#00E5FF] border border-[#00E5FF]/20' : 'bg-white/5 text-zinc-600 border border-white/10'
+                          }`}
+                        >
+                          {el.visible ? 'Visible' : 'Oculto'}
+                        </button>
+                      </div>
+                      {el.visible && (
+                        <>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-zinc-500 text-[8px] uppercase font-bold">Tamaño</span>
+                              <span className="text-[#00E5FF] text-[10px] font-black">{el.fontSize}px</span>
+                            </div>
+                            <input
+                              type="range" min="8" max="150" value={el.fontSize}
+                              onChange={(e) => setCertSettings((prev: any) => ({
+                                ...prev,
+                                elements: { ...prev.elements, [eid]: { ...el, fontSize: Number(e.target.value) } }
+                              }))}
+                              className="w-full h-1.5 rounded-full appearance-none cursor-pointer accent-[#00E5FF]"
+                              style={{ background: `linear-gradient(to right, #00E5FF ${((el.fontSize - 8) / 142) * 100}%, #27272a ${((el.fontSize - 8) / 142) * 100}%)` }}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <span className="text-zinc-500 text-[8px] uppercase font-bold">Color del texto</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {['#000000', '#ffffff', '#00E5FF', '#a855f7', '#f59e0b', '#10b981', '#ef4444', '#94a3b8'].map(color => (
+                                <button
+                                  key={color}
+                                  onClick={() => setCertSettings((prev: any) => ({
+                                    ...prev,
+                                    elements: { ...prev.elements, [eid]: { ...el, color } }
+                                  }))}
+                                  style={{ backgroundColor: color }}
+                                  className={`w-7 h-7 rounded-lg border-2 transition-all hover:scale-110 ${el.color === color ? 'border-white scale-110' : 'border-transparent'}`}
+                                />
+                              ))}
+                              <label className="relative cursor-pointer">
+                                <input
+                                  type="color"
+                                  value={el.color}
+                                  onChange={(e) => setCertSettings((prev: any) => ({
+                                    ...prev,
+                                    elements: { ...prev.elements, [eid]: { ...el, color: e.target.value } }
+                                  }))}
+                                  className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                                />
+                                <div
+                                  className="w-7 h-7 rounded-lg border-2 border-dashed border-white/40 flex items-center justify-center text-[10px] font-black text-white"
+                                  style={{ backgroundColor: el.color }}
+                                >+</div>
+                              </label>
+                            </div>
+                            <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2">
+                              <div className="w-4 h-4 rounded flex-shrink-0" style={{ backgroundColor: el.color }} />
+                              <input
+                                type="text"
+                                value={el.color}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
+                                    setCertSettings((prev: any) => ({
+                                      ...prev,
+                                      elements: { ...prev.elements, [eid]: { ...el, color: val } }
+                                    }))
+                                  }
+                                }}
+                                className="bg-transparent text-white text-[10px] font-mono outline-none flex-1"
+                                maxLength={7}
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <div className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/5">
-                      <input type="range" min="10" max="150" value={el.fontSize}
-                        onChange={(e) => setCertSettings({...certSettings, elements: {...certSettings.elements, [eid]: {...el, fontSize: Number(e.target.value)}}})}
-                        className="w-full accent-[#00E5FF] bg-zinc-800 h-1 rounded-lg appearance-none cursor-pointer" />
-                      <input type="color" value={el.color}
-                        onChange={(e) => setCertSettings({...certSettings, elements: {...certSettings.elements, [eid]: {...el, color: e.target.value}}})}
-                        className="w-full h-8 bg-black rounded p-1" />
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             ) : (
-              <button onClick={generatePDF} className="w-full bg-[#00E5FF] text-black py-6 rounded-3xl font-black text-xs uppercase flex items-center justify-center gap-3">
-                <Download size={20}/> Descargar Diploma
-              </button>
+              <div className="space-y-4">
+                <div className="bg-[#050505] border border-white/5 p-6 rounded-2xl space-y-3">
+                  <p className="text-zinc-400 text-[9px] uppercase font-black tracking-widest">Tu certificado</p>
+                  <p className="text-white font-black text-lg">{profile?.full_name}</p>
+                  <p className="text-[#00E5FF] text-sm">{courseData?.title}</p>
+                  <p className="text-zinc-500 text-xs">{getTodayFormatted()}</p>
+                </div>
+                <button
+                  onClick={generatePDF}
+                  className="w-full bg-[#00E5FF] text-black py-6 rounded-3xl font-black text-xs uppercase flex items-center justify-center gap-3 hover:bg-[#00d1e6] transition-all shadow-[0_0_30px_rgba(0,229,255,0.3)]"
+                >
+                  <Download size={20}/> Descargar Diploma
+                </button>
+              </div>
             )}
           </div>
         </div>
