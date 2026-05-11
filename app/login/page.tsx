@@ -84,7 +84,6 @@ export default function LoginPage() {
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
       })
-      
       if (error) throw error
       
       setSuccess('✅ Email de recuperación enviado. Revisa tu bandeja.')
