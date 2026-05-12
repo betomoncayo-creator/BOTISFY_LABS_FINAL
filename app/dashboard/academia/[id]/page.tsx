@@ -5,7 +5,7 @@ import { UserContext } from '../../../../lib/context'
 import db from '../../../../lib/database'
 import { jsPDF } from 'jspdf'
 import { 
-  ChevronLeft, Video, FileCode, FileText, 
+  ChevronLeft, ChevronRight, Video, FileCode, FileText, 
   Trash2, ArrowUp, ArrowDown, 
   UploadCloud, RefreshCw, User, Edit3, Lock, Download, Square, CheckSquare, Plus, X, Users
 } from 'lucide-react'
@@ -20,6 +20,7 @@ export default function CourseEditorPage() {
   const [activeTab, setActiveTab] = useState('modulos')
   const [selectedModId, setSelectedModId] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [mobileView, setMobileView] = useState<'list' | 'content'>('list')
 
   const isAdmin = profile?.role?.toLowerCase().trim() === 'admin'
   const [isStudentMode, setIsStudentMode] = useState(true)
@@ -89,6 +90,36 @@ export default function CourseEditorPage() {
   }, [id, profile, loadingProfile, isAdmin, router])
 
   const selectedModule = modules.find(m => m.id === selectedModId)
+  const selectedModIdx = modules.findIndex(m => m.id === selectedModId)
+  const isLastModule = selectedModIdx === modules.length - 1
+  const isFirstModule = selectedModIdx === 0
+  const isQuizModule = selectedModule?.type === 'quiz'
+  const quizPassed = simulationResult?.passed === true
+
+  const goToNextModule = () => {
+    if (selectedModIdx < modules.length - 1) {
+      setSelectedModId(modules[selectedModIdx + 1].id)
+      setSimulationResult(null)
+      setUserAnswers({})
+      setMobileView('content')
+    }
+  }
+
+  const goToPrevModule = () => {
+    if (selectedModIdx > 0) {
+      setSelectedModId(modules[selectedModIdx - 1].id)
+      setSimulationResult(null)
+      setUserAnswers({})
+      setMobileView('content')
+    }
+  }
+
+  const selectModule = (modId: number) => {
+    setSelectedModId(modId)
+    setSimulationResult(null)
+    setUserAnswers({})
+    setMobileView('content')
+  }
 
   const toggleEnrollment = async (profileId: string) => {
     setSavingEnrollment(profileId)
@@ -132,7 +163,12 @@ export default function CourseEditorPage() {
     if (!file) return
     setUploading(true)
     try {
-      const fileName = `${Date.now()}-${file.name}`
+      const safeName = file.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9._-]/g, '-')
+        .toLowerCase()
+      const fileName = `${Date.now()}-${safeName}`
       const url = await db.uploadFile('course_materials', fileName, file)
       if (type === 'cert') setCertSettings((prev: any) => ({ ...prev, bgImage: url }))
       else updateModule('content', url)
@@ -423,12 +459,16 @@ export default function CourseEditorPage() {
       {/* TAB: MÓDULOS */}
       {activeTab === 'modulos' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
-          <div className="xl:col-span-4 space-y-4">
+
+          {/* SIDEBAR — lista de módulos */}
+          {/* Mobile: solo visible si mobileView === 'list' */}
+          {/* Desktop: siempre visible */}
+          <div className={`xl:col-span-4 space-y-4 ${mobileView === 'content' ? 'hidden xl:block' : 'block'}`}>
             <div className="space-y-3">
               {modules.map((mod, idx) => (
                 <div
                   key={mod.id}
-                  onClick={() => { setSelectedModId(mod.id); setSimulationResult(null) }}
+                  onClick={() => selectModule(mod.id)}
                   className={`p-5 rounded-2xl flex items-center justify-between group border cursor-pointer transition-all ${selectedModId === mod.id ? 'bg-[#00E5FF]/5 border-[#00E5FF]/40' : 'bg-[#050505] border-white/5'}`}
                 >
                   <div className="flex items-center gap-4">
@@ -461,9 +501,24 @@ export default function CourseEditorPage() {
             )}
           </div>
 
-          <div className="xl:col-span-8">
+          {/* CONTENIDO DEL MÓDULO */}
+          {/* Mobile: solo visible si mobileView === 'content' */}
+          <div className={`xl:col-span-8 ${mobileView === 'list' ? 'hidden xl:block' : 'block'}`}>
             {selectedModule && (
-              <div className="bg-[#050505] border border-white/5 p-10 rounded-[3rem] space-y-8 animate-in slide-in-from-right-4">
+              <div className="bg-[#050505] border border-white/5 p-6 md:p-10 rounded-[3rem] space-y-8 animate-in slide-in-from-right-4">
+
+                {/* Breadcrumb móvil */}
+                <div className="flex items-center gap-3 xl:hidden">
+                  <button
+                    onClick={() => setMobileView('list')}
+                    className="flex items-center gap-2 text-zinc-500 hover:text-white text-[9px] font-black uppercase transition-all"
+                  >
+                    <ChevronLeft size={14}/> Módulos
+                  </button>
+                  <span className="text-zinc-700">›</span>
+                  <span className="text-[#00E5FF] text-[9px] font-black uppercase truncate">{selectedModule.title}</span>
+                </div>
+
                 {!isStudentMode ? (
                   <input
                     type="text"
@@ -472,7 +527,7 @@ export default function CourseEditorPage() {
                     className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-white text-xl font-black italic uppercase outline-none focus:border-[#00E5FF]/40"
                   />
                 ) : (
-                  <h2 className="text-white text-3xl font-black italic uppercase">{selectedModule.title}</h2>
+                  <h2 className="text-white text-2xl md:text-3xl font-black italic uppercase">{selectedModule.title}</h2>
                 )}
 
                 {selectedModule.type !== 'quiz' && !isStudentMode && (
@@ -494,9 +549,9 @@ export default function CourseEditorPage() {
                   </div>
                 )}
 
-                <div className="bg-black rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl relative min-h-[400px] flex items-center justify-center">
+                <div className="bg-black rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl relative min-h-[300px] md:min-h-[400px] flex items-center justify-center">
                   {selectedModule.type === 'quiz' ? (
-                    <div className="w-full p-8 space-y-8 overflow-y-auto max-h-[700px]">
+                    <div className="w-full p-6 md:p-8 space-y-8 overflow-y-auto max-h-[700px]">
                       {!isStudentMode ? (
                         <div className="space-y-8">
                           <div className="flex items-center justify-between p-5 bg-white/5 rounded-2xl border border-white/10">
@@ -513,7 +568,7 @@ export default function CourseEditorPage() {
                               className="w-24 text-center bg-black border border-[#00E5FF]/30 rounded-xl p-3 text-white text-2xl font-black outline-none focus:border-[#00E5FF]"
                             />
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap">
                             {['simple', 'multiple', 'open'].map(t => (
                               <button
                                 key={t}
@@ -599,7 +654,7 @@ export default function CourseEditorPage() {
                       ) : (
                         <div className="space-y-10">
                           {simulationResult ? (
-                            <div className="text-center p-12 space-y-4">
+                            <div className="text-center p-8 md:p-12 space-y-4">
                               <p className="text-6xl font-black italic">{simulationResult.score}/{selectedModule.totalPoints || 10}</p>
                               <p className={`font-black text-lg ${simulationResult.passed ? 'text-green-500' : 'text-red-500'}`}>
                                 {simulationResult.passed ? '✅ APROBADO' : '❌ FALLIDO'}
@@ -609,12 +664,22 @@ export default function CourseEditorPage() {
                                   {savingProgress ? 'Guardando progreso...' : '✓ Progreso guardado — Certificado desbloqueado'}
                                 </p>
                               )}
-                              <button
-                                onClick={() => { setSimulationResult(null); setUserAnswers({}) }}
-                                className="mt-6 px-10 py-3 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase"
-                              >
-                                Reintentar
-                              </button>
+                              <div className="flex flex-col gap-3 mt-6">
+                                <button
+                                  onClick={() => { setSimulationResult(null); setUserAnswers({}) }}
+                                  className="px-10 py-3 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase"
+                                >
+                                  Reintentar
+                                </button>
+                                {simulationResult.passed && (
+                                  <button
+                                    onClick={() => setActiveTab('certificado')}
+                                    className="px-10 py-3 bg-[#00E5FF] text-black rounded-xl text-[9px] font-black uppercase flex items-center justify-center gap-2"
+                                  >
+                                    Ver Certificado <ChevronRight size={14}/>
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             <>
@@ -660,11 +725,68 @@ export default function CourseEditorPage() {
                           ? <iframe className="w-full aspect-video" src={getEmbedUrl(selectedModule.content) || ''} allowFullScreen />
                           : <video className="w-full aspect-video" src={selectedModule.content} controls />
                       )}
-                      {selectedModule.type === 'pdf' && <iframe src={selectedModule.content} className="w-full h-[600px]" />}
+                      {selectedModule.type === 'pdf' && <iframe src={selectedModule.content} className="w-full h-[500px]" />}
                       {selectedModule.type === 'embed' && <div className="w-full h-full p-4" dangerouslySetInnerHTML={{ __html: selectedModule.content }} />}
                     </>
                   )}
                 </div>
+
+                {/* NAVEGACIÓN ANTERIOR / SIGUIENTE */}
+                {isStudentMode && (
+                  <div className="flex items-center justify-between gap-4 pt-2">
+                    <button
+                      onClick={goToPrevModule}
+                      disabled={isFirstModule}
+                      className="flex items-center gap-2 px-5 py-3 bg-white/5 border border-white/10 rounded-2xl text-[9px] font-black uppercase hover:bg-white/10 transition-all disabled:opacity-20 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft size={14}/> Anterior
+                    </button>
+
+                    <span className="text-zinc-600 text-[8px] font-bold uppercase">
+                      {selectedModIdx + 1} / {modules.length}
+                    </span>
+
+                    {isLastModule && isQuizModule ? (
+                      // Último módulo y es quiz → botón Finalizar (bloqueado hasta aprobar)
+                      <button
+                        onClick={() => {
+                          if (isUnlocked || quizPassed) setActiveTab('certificado')
+                        }}
+                        disabled={!isUnlocked && !quizPassed}
+                        className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-[9px] font-black uppercase transition-all ${
+                          (isUnlocked || quizPassed)
+                            ? 'bg-[#00E5FF] text-black hover:bg-[#00d1e6]'
+                            : 'bg-white/5 border border-white/10 text-zinc-600 cursor-not-allowed opacity-40'
+                        }`}
+                      >
+                        {(isUnlocked || quizPassed) ? (
+                          <><CheckSquare size={14}/> Ver Certificado</>
+                        ) : (
+                          <><Lock size={14}/> Aprobar para finalizar</>
+                        )}
+                      </button>
+                    ) : isLastModule ? (
+                      // Último módulo no quiz → botón ir al certificado si está desbloqueado
+                      <button
+                        onClick={() => { if (isUnlocked) setActiveTab('certificado') }}
+                        disabled={!isUnlocked}
+                        className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-[9px] font-black uppercase transition-all ${
+                          isUnlocked ? 'bg-[#00E5FF] text-black hover:bg-[#00d1e6]' : 'bg-white/5 border border-white/10 text-zinc-600 opacity-40 cursor-not-allowed'
+                        }`}
+                      >
+                        {isUnlocked ? <><CheckSquare size={14}/> Certificado</> : <><Lock size={14}/> Completa el quiz</>}
+                      </button>
+                    ) : (
+                      // No es el último → siguiente normal
+                      <button
+                        onClick={goToNextModule}
+                        className="flex items-center gap-2 px-5 py-3 bg-[#00E5FF] text-black rounded-2xl text-[9px] font-black uppercase hover:bg-[#00d1e6] transition-all"
+                      >
+                        Siguiente <ChevronRight size={14}/>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -674,8 +796,6 @@ export default function CourseEditorPage() {
       {/* TAB: CERTIFICADO */}
       {activeTab === 'certificado' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
-
-          {/* PREVIEW */}
           <div className="xl:col-span-8">
             <div
               ref={containerRef}
@@ -713,12 +833,9 @@ export default function CourseEditorPage() {
             )}
           </div>
 
-          {/* CONTROLES */}
           <div className="xl:col-span-4 space-y-6 xl:sticky xl:top-8 xl:max-h-[calc(100vh-8rem)] xl:overflow-y-auto">
             {!isStudentMode ? (
               <div className="bg-[#050505] p-8 rounded-[2rem] border border-white/5 space-y-8">
-
-                {/* SUBIR FONDO */}
                 <div className="space-y-3">
                   <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest">Imagen de Fondo</p>
                   <label className={`flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
@@ -739,8 +856,6 @@ export default function CourseEditorPage() {
                     </button>
                   )}
                 </div>
-
-                {/* ELEMENTOS */}
                 <div className="border-t border-white/5 pt-6 space-y-6">
                   <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest">Elementos de Texto</p>
                   <p className="text-zinc-600 text-[8px]">Arrastra los textos en el preview para reposicionarlos</p>
